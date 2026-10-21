@@ -22,16 +22,17 @@ const PAX_CAP = 90;
 
 /* Crossy-Road palette: saturated, high contrast, no gradients. */
 const C = {
-  paper: 0xffffff,
-  paperShade: 0xeeece6,
-  road: 0xd2cfc5,
-  roadEdge: 0xc9c6bc,
-  water: 0xeef4f6,
-  ink: 0x1b1f24,
-  accent: 0xd94f3d,
-  accent2: 0x2f6f97,
-  roof: 0xffffff,
-  glass: 0x8f969d,
+  // warm paper + graphite ink, accents drawn from the UI palette
+  paper: 0xfffdf7,
+  paperShade: 0xf3ecdd,
+  road: 0xd6c9b2,
+  roadEdge: 0xbfb098,
+  water: 0xe8eef0,
+  ink: 0x33302a,
+  accent: 0xc9523f,
+  accent2: 0x4f8f86,
+  roof: 0xfffdf7,
+  glass: 0x9a9188,
 };
 
 /* ------------------------------------------------------------------ */
@@ -58,7 +59,7 @@ export class Scene3D {
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
 
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0xf4f3ef);
+    this.scene.background = new THREE.Color(0xf7f1e6);
 
     // orthographic isometric camera — the Crossy Road look
     this.camera = new THREE.OrthographicCamera(-40, 40, 30, -30, -200, 400);
@@ -409,7 +410,7 @@ export class Scene3D {
     }
 
     // entrance canopy
-    const canopy = this.box(13, 0.3, 3.2, C.accent2);
+    const canopy = this.box(13, 0.3, 3.2, 0x5f9c92);
     canopy.position.set(17.6, 3.3, T.y + 2.2);
     this.root.add(canopy);
     for (const x of [11.6, 23.6]) {
@@ -463,15 +464,15 @@ export class Scene3D {
     }
     this.addInstanced(new THREE.BoxGeometry(0.2, 4.0, 0.2), flat(0xe9e4d6), posts);
 
-    const roof = this.box(5.4, 0.2, 19, C.paper);
+    const roof = this.box(5.4, 0.2, 19, 0xd97757);
     roof.position.set(38.0, 4.3, 11.5);
     this.root.add(roof);
 
     // coloured fascia so the roof reads as a structure, not a blank card
-    const trim = this.box(6.6, 0.4, 0.3, C.accent2);
+    const trim = this.box(6.6, 0.4, 0.3, 0xc4633f);
     trim.position.set(38.0, 4.2, 1.6);
     this.root.add(trim);
-    const trim2 = this.box(6.6, 0.4, 0.3, C.accent2);
+    const trim2 = this.box(6.6, 0.4, 0.3, 0xc4633f);
     trim2.position.set(38.0, 4.2, 21.4);
     this.root.add(trim2);
 
@@ -519,9 +520,9 @@ export class Scene3D {
 
     this.addInstanced(new THREE.CylinderGeometry(0.16, 0.2, 1.0, 6), flat(C.ink),
       spots.map(([x, z]) => [x, 0.5, z]));
-    this.addInstanced(new THREE.ConeGeometry(0.8, 1.4, 7), flat(0xf6f5f0),
+    this.addInstanced(new THREE.ConeGeometry(0.8, 1.4, 7), flat(0x9db98a),
       spots.map(([x, z]) => [x, 1.55, z]));
-    this.addInstanced(new THREE.ConeGeometry(0.58, 1.0, 7), flat(0xffffff),
+    this.addInstanced(new THREE.ConeGeometry(0.58, 1.0, 7), flat(0xb3cba2),
       spots.map(([x, z]) => [x, 2.2, z]));
     this.addInstanced(new THREE.CircleGeometry(0.95, 10),
       new THREE.MeshBasicMaterial({ color: 0x1d2a24, transparent: true, opacity: 0.14, depthWrite: false }),
