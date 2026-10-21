@@ -468,16 +468,43 @@ export class Scene3D {
       this.root.add(d);
     }
 
-    // entrance canopy over the doors
-    const canopy = new THREE.Mesh(
-      box(11, 0.16, 2.6),
-      new THREE.MeshStandardMaterial({ color: 0x2f8f7a, roughness: 0.8 })
-    );
-    canopy.position.set(17.6, 3.1, T.y + T.depth / 2 + 4.2);
+    // ---- entrance: portal, canopy, steps, glass ----
+    const face = T.y + T.depth / 2 + 2.6;
+    const white = new THREE.MeshStandardMaterial({ color: 0xf4f6f8, roughness: 0.8 });
+    const accent = new THREE.MeshStandardMaterial({ color: 0x2f8f7a, roughness: 0.75 });
+
+    for (const x of [11.4, 23.8]) {
+      const col = new THREE.Mesh(box(0.55, 3.5, 0.55), white);
+      col.position.set(x, 1.75, face + 1.2);
+      this.root.add(col);
+    }
+    const lintel = new THREE.Mesh(box(13.1, 0.5, 0.65), white);
+    lintel.position.set(17.6, 3.65, face + 1.2);
+    this.root.add(lintel);
+
+    const canopy = new THREE.Mesh(box(12.2, 0.14, 2.4), accent);
+    canopy.position.set(17.6, 3.42, face + 2.3);
     this.root.add(canopy);
 
-    const sign = this.label("HUANGGANG PORT  ·  皇岗口岸", "#2f3a47", 0.78);
-    sign.position.set(17.6, 4.3, T.y + T.depth / 2 + 4.4);
+    // glass curtain wall behind the doors
+    const glassWall = new THREE.Mesh(new THREE.PlaneGeometry(12.2, 2.9), this.windowMat);
+    glassWall.position.set(17.6, 1.45, face - 1.4);
+    this.root.add(glassWall);
+
+    // steps down to the pavement
+    for (let i = 0; i < 2; i++) {
+      const step = new THREE.Mesh(box(12.6 - i * 0.7, 0.11, 0.5), white);
+      step.position.set(17.6, 0.055 + i * 0.11, face + 3.9 + i * 0.45);
+      this.root.add(step);
+    }
+
+    // sign band on the lintel
+    const band = new THREE.Mesh(box(8.6, 0.85, 0.12), accent);
+    band.position.set(17.6, 4.5, face + 1.1);
+    this.root.add(band);
+
+    const sign = this.label("HUANGGANG PORT  ·  皇岗口岸", "#f4f8ff", 0.42);
+    sign.position.set(17.6, 4.5, face + 1.18);
     this.root.add(sign);
 
     // kerb in front of the terminal
@@ -740,13 +767,22 @@ export class Scene3D {
       this.addModel(b, x, -7.6 - (i % 2) * 1.2, 0, 1.0, 0, [2.1, 1.3], 0xffe4c2);
     });
 
+    // a second row behind the terminal for depth
+    if (!low) {
+      [-13, 3, 19, 35, 49].forEach((x, i) => {
+        const b = A.buildings[(i + 1) % A.buildings.length];
+        this.addModel(b, x, -15.5 - (i % 2) * 4.5, 0, 1.18, 0, [1.85, 1.5], 0xf0dcc4);
+      });
+    }
+
     if (low) return;
 
     // trees along both edges and behind the building
     const treeSpots = [
-      [-9, 12, 1.5], [-9, 20, 1.2], [-9, 28, 1.6],
-      [57, 12, 1.4], [57, 22, 1.5], [57, 30, 1.2],
-      [6, -14, 1.7], [30, -14, 1.5], [46, -14, 1.6],
+      [-12, 6, 1.5], [-12, 14, 1.2], [-12, 22, 1.6], [-12, 30, 1.3],
+      [60, 6, 1.4], [60, 14, 1.5], [60, 22, 1.2], [60, 30, 1.5],
+      [-4, -12, 1.7], [13, -12, 1.5], [27, -12, 1.6], [41, -12, 1.4],
+      [54, -12, 1.5], [-2, 36, 1.3], [50, 36, 1.4], [26, 38, 1.2],
     ];
     for (const [x, z, sc] of treeSpots) {
       this.addModel(A.trees[(x + z) % A.trees.length], x, z, (x + z) * 0.7, sc);
