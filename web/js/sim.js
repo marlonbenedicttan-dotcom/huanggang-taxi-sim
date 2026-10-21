@@ -226,6 +226,7 @@ export class Simulation {
     this.frames = [];
     this.framesOn = !!cfg.anim;
     this.taxiSeq = 0;
+    this.paxSeq = 0;
 
     this.schedule();
   }
@@ -517,7 +518,7 @@ export class Simulation {
       switch (kind) {
         case EV.PAX: {
           const cls = a;
-          const pax = { tArr: t, cls, app: b === 1, state: 0, tServe: -1 };
+          const pax = { id: ++this.paxSeq, tArr: t, cls, app: b === 1, state: 0, tServe: -1 };
           this.pq[cls].push(pax);
           if (t >= this.warm) this.paxArrived++;
           if (cfg.patienceMeanMin < Infinity) {
@@ -651,9 +652,16 @@ export class Simulation {
       taxis.push([this.flexBuf[i].id, CLS.flex, 0, i, -1, -1]);
     }
 
+    const px = [];
+    for (let c = 0; c < 3; c++) {
+      const q = this.pq[CLASSES[c]];
+      for (let i = 0; i < q.length; i++) px.push([q[i].id, c, i]);
+    }
+
     this.frames.push({
       t: this.t,
       q: [this.pq.urban.length, this.pq.nt.length, this.pq.prebook.length],
+      px,
       busy: this.busy.urban + this.busy.nt + this.busy.prebook,
       buf: this.bufferVisualLen(),
       tx: taxis,

@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>Huanggang Port · Taxi Dispatch Simulator</title>
     <meta name="description" content="Interactive 3D simulation of the Huanggang Port taxi queue: change demand, taxi supply, bays and dispatch policy, then watch the queue build." />
     <link rel="stylesheet" href="./css/style.css" />
@@ -11,6 +11,8 @@
   <body>
     <div id="app">
       <aside id="panel">
+        <button id="sheetToggle" class="sheet-handle" aria-expanded="false"
+                aria-label="Show controls"><span></span></button>
         <header class="brand">
           <div class="mark"></div>
           <div>

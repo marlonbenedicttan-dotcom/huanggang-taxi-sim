@@ -17,12 +17,21 @@ export const CSS_COLOR = ["#e0564a", "#3fa86a", "#4a90d9", "#e8a33d"];
 
 export const LANES = { urban: 4, nt: 12, prebook: 20, flex: 25 };
 
-export const TAXI = { length: 1.0, height: 0.45, width: 0.52 };
+export const TAXI = { length: 0.9, height: 0.45, width: 0.5 };
+export const PERSON = { height: 0.52, radius: 0.075 };
+
+/** Terminal wall along the north edge; three doors feed the three lanes. */
+export const TERMINAL = { y: -4.8, depth: 3.0, x0: -2, x1: 48, height: 4.4 };
+export const DOORS = [
+  [14.0, -3.2],   // urban
+  [17.5, -3.2],   // NT
+  [21.0, -3.2],   // pre-booked
+];
 
 const BUF = { x0: 2.5, dx: 1.12, cols: 8, rows: [-1.9, -0.95, 0, 0.95, 1.9] };
 const BUF_FLEX = { x0: 2.5, dx: 1.12, cols: 5, rows: [-0.95, 0, 0.95] };
 const QUEUE = { x0: 13.4, dx: 0.8, cols: 12, rows: [-1.65, -0.55, 0.55, 1.65] };
-const STAND = { x0: 25.0, dx: 1.12, n: 12 };
+const STAND = { x0: 25.0, dx: 1.2, n: 12 };
 
 const BAY = {
   urban: { x: 40.0, y0: 1.2, dy: 1.45, n: 8 },
@@ -81,6 +90,11 @@ export function standSlots(clsId) {
   const out = [];
   for (let i = 0; i < STAND.n; i++) out.push(standPos(clsId, i));
   return out;
+}
+
+/** Where a passenger of this class enters the hall (terminal door). */
+export function doorPos(clsId) {
+  return DOORS[clsId] || DOORS[0];
 }
 
 export function baySlots(groupId) {

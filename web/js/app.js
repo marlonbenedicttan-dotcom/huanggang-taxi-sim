@@ -56,7 +56,15 @@ const GROUPS = [
       { key: "patienceMeanMin", label: "Tolerance before leaving", min: 10, max: 80, step: 5, unit: "min" },
     ],
   },
+  {
+    name: "Display",
+    items: [{ key: "highQuality", label: "High-quality graphics", type: "toggle" }],
+  },
 ];
+
+const IS_PHONE =
+  window.matchMedia("(max-width: 820px)").matches ||
+  (navigator.maxTouchPoints > 1 && window.innerWidth < 1100);
 
 const WINDOWS = [
   { label: "Morning peak 08–11", from: 0, to: 180 },
@@ -86,7 +94,7 @@ const PRESETS = {
  * State
  * ------------------------------------------------------------------ */
 const state = {
-  values: { ...PRESETS.baseline },
+  values: { ...PRESETS.baseline, highQuality: !IS_PHONE },
   window: 0,
   speed: 8,          // simulated minutes per real second
   seed: 1,
@@ -141,6 +149,9 @@ function buildControls() {
           state.values[item.key] = !valueOf(item.key);
           paint();
           setPreset(null);
+          if (item.key === "highQuality") {
+            scene.setQuality(state.values.highQuality ? "high" : "low");
+          }
         });
         paint();
         section.appendChild(row);
@@ -463,7 +474,7 @@ function loop(now) {
     drawPlayhead();
   }
 
-  scene.tick(dt);
+  scene.tick(dt, (state.meta ? state.meta.startHour : 8) + state.playT / 60);
   scene.render(dt);
   if (DIAG) dumpDiag();
   if (STILL && --stillLeft <= 0) return;   // freeze for screenshot / tests
@@ -485,7 +496,8 @@ function updateHud(frame) {
     .filter(([, n]) => n > 0)
     .map(([c, n]) => `<span class="chip"><i style="background:${CSS_COLOR[c]}"></i>${n} ${CLS_LABEL[c].split(" ")[0]}</span>`)
     .join("");
-  $("#counts").innerHTML = chips + `<span class="chip"><i class="buf"></i>${frame.buf} taxis in buffer</span>`;
+  const bufLabel = IS_PHONE ? `${frame.buf} taxis` : `${frame.buf} taxis in buffer`;
+  $("#counts").innerHTML = chips + `<span class="chip"><i class="buf"></i>${bufLabel}</span>`;
 }
 
 /* ------------------------------------------------------------------ *
@@ -505,7 +517,22 @@ function init() {
     });
   });
 
-  $("#runBtn").addEventListener("click", run);
+  scene.setQuality(valueOf("highQuality") ? "high" : "low");
+
+  const sheet = $("#sheetToggle");
+  const setSheet = (open) => {
+    document.body.classList.toggle("sheet-open", open);
+    sheet?.setAttribute("aria-expanded", String(open));
+  };
+  sheet?.addEventListener("click", () =>
+    setSheet(!document.body.classList.contains("sheet-open"))
+  );
+
+  $("#runBtn").addEventListener("click", () => {
+    run();
+    // on a phone, get out of the way so the result is visible immediately
+    if (IS_PHONE) setSheet(false);
+  });
   $("#playBtn").addEventListener("click", () => {
     state.playing = !state.playing;
     $("#playBtn").textContent = state.playing ? "Pause" : "Play";
@@ -524,9 +551,18 @@ function init() {
     run();
   });
 
-  window.addEventListener("resize", () => {
+  const onResize = () => {
     scene.resize();
     drawChart();
+  };
+  window.addEventListener("resize", onResize);
+  window.addEventListener("orientationchange", () => setTimeout(onResize, 250));
+
+  // stop burning battery when the tab is in the background
+  let hidden = false;
+  document.addEventListener("visibilitychange", () => {
+    hidden = document.hidden;
+    last = performance.now();
   });
 
   // deep links: ?preset=smart&pax=650&t=120&window=2
@@ -554,6 +590,13 @@ function init() {
   window.__sim = {
     scene,
     state,
+    /** Let the walkers reach their targets (used for stills and video). */
+    settle(seconds = 3) {
+      const hour = (state.meta ? state.meta.startHour : 8) + state.playT / 60;
+      const n = Math.ceil(seconds * 30);
+      for (let i = 0; i < n; i++) scene.tick(1 / 30, hour);
+      scene.render(1 / 30);
+    },
     /** Advance the playhead by `dMin` simulated minutes and draw one frame. */
     step(dMin) {
       state.playT += dMin;
