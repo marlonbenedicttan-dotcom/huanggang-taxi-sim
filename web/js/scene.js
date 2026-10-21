@@ -172,16 +172,22 @@ export class Scene3D {
 
   /* ---------------- helpers ---------------- */
   /** A box with a black silhouette behind it — the whole look in one helper. */
-  box(w, h, d, color, opts = {}) {
+  box(w, h, d, color, opts = {}, outline = true) {
     const geo = new THREE.BoxGeometry(w, h, d);
     const m = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ color, ...opts }));
 
-    const edge = new THREE.Mesh(
-      geo,
-      new THREE.MeshBasicMaterial({ color: C.ink, side: THREE.BackSide })
-    );
-    edge.scale.setScalar(1.035);
-    m.add(edge);
+    // A scaled black back-face shell works as an outline on chunky volumes,
+    // but on a thin slab the shell sits in front of the top face and the slab
+    // renders solid black. Flat pieces opt out.
+    const flatPiece = h < 0.5 && Math.max(w, d) > 1.5;
+    if (outline && !flatPiece) {
+      const edge = new THREE.Mesh(
+        geo,
+        new THREE.MeshBasicMaterial({ color: C.ink, side: THREE.BackSide })
+      );
+      edge.scale.setScalar(1.035);
+      m.add(edge);
+    }
     return m;
   }
 
