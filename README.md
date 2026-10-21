@@ -102,6 +102,24 @@ JavaScript so it can be hosted for free with **no server and no cold start**.
 passengers waiting, the urban buffer drained, the NT buffer full. Toggle
 "Smart dispatch" and the same moment has no queue at all.*
 
+**Compare a proposal against the current process**
+
+![A/B comparison](docs/compare_split_view.png)
+
+*Left A = current process, right B = your proposal, same seed and same clock.
+The bar underneath states whether the difference is real: it runs both scenarios
+for N replications and refuses to claim an effect when the 95% intervals overlap.*
+
+* **Policy cards** — six measures, each showing its effect on mean wait when
+  applied alone, so you can see which suggestion actually moves the needle.
+* **Diff strip** — lists only what differs (`Urban bays 8 → 10`,
+  `Dispatch 1 min → continuous`), which is the literal answer to
+  "did anything change?".
+* **Trials** — 1 / 10 / 30 replications, with a verdict that says
+  "−55%, CIs do not overlap" or "no measurable difference".
+* On a phone the split becomes an **A/B swap** (one scene at a time, `Show A`
+  button) because two live 3D scenes would waste memory on a phone.
+
 **What you can do**
 
 * Drag to orbit, scroll to zoom.

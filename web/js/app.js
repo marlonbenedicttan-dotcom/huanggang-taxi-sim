@@ -201,7 +201,8 @@ function setPreset(name) {
 /* ------------------------------------------------------------------ *
  * Config + run
  * ------------------------------------------------------------------ */
-function buildConfig() {
+function buildConfig(vals = state.values) {
+  const valueOf = (k) => (vals[k] !== undefined ? vals[k] : DEFAULTS[k] !== undefined ? DEFAULTS[k] : 0);
   const w = WINDOWS[state.window];
   const from = w.from;
   const to = w.to;
@@ -267,6 +268,8 @@ function run() {
   updateHud(state.frames[0]);
   $("#hint").textContent =
     `${res.frames.length} frames · ${Math.round(ms)} ms to simulate ${cfg.durationHours} h`;
+  renderCards();
+  if (state.compare) updateVerdict();
   $("#playBtn").textContent = "Pause";
 }
 
@@ -474,8 +477,26 @@ function loop(now) {
     drawPlayhead();
   }
 
-  scene.tick(dt, (state.meta ? state.meta.startHour : 8) + state.playT / 60);
+  const hour = (state.meta ? state.meta.startHour : 8) + state.playT / 60;
+  scene.tick(dt, hour);
   scene.render(dt);
+
+  if (state.compare && state.runA) {
+    const sb = ensureSceneB();
+    const key = `${state.window}-${state.runA.frames.length}`;
+    if (bKey !== key) {
+      sb.setScene(state.runA.meta);
+      sb.setQuality(valueOf("highQuality") ? "high" : "low");
+      bKey = key;
+    }
+    const j = Math.min(state.runA.frames.length - 1,
+      Math.max(0, Math.round((state.playT - state.from) / state.step)));
+    sb.sync(state.runA.frames[j]);
+    sb.orbit = { ...scene.orbit };
+    sb.portrait = scene.portrait;
+    sb.tick(dt, hour);
+    sb.render(dt);
+  }
   if (DIAG) dumpDiag();
   if (STILL && --stillLeft <= 0) return;   // freeze for screenshot / tests
   requestAnimationFrame(loop);
@@ -503,6 +524,248 @@ function updateHud(frame) {
 /* ------------------------------------------------------------------ *
  * Wiring
  * ------------------------------------------------------------------ */
+
+/* ================================================================== *
+ * Scenario cards + A/B comparison
+ * ================================================================== */
+
+const CARDS = [
+  {
+    label: "Continuous dispatch",
+    on: { dispatchIntervalMin: 0 },
+    off: { dispatchIntervalMin: 1 },
+    isOn: (v) => Number(v.dispatchIntervalMin) === 0,
+  },
+  {
+    label: "Pooled pickup bays",
+    on: { pooledStands: true },
+    off: { pooledStands: false },
+    isOn: (v) => !!v.pooledStands,
+  },
+  {
+    label: "App pre-registration",
+    on: { appShare: 0.85 },
+    off: { appShare: 0 },
+    isOn: (v) => Number(v.appShare) > 0,
+  },
+  {
+    label: "Flexible taxis",
+    on: { flexShare: 0.35 },
+    off: { flexShare: 0 },
+    isOn: (v) => Number(v.flexShare) > 0,
+  },
+  {
+    label: "Two extra bays",
+    on: { "stands.urban": 10, "stands.nt": 4 },
+    off: { "stands.urban": 8, "stands.nt": 3 },
+    isOn: (v) => Number(v["stands.urban"]) > 8 || Number(v["stands.nt"]) > 3,
+  },
+  {
+    label: "Balance NT supply",
+    on: { taxiSupplyRatioNt: 1.05 },
+    off: { taxiSupplyRatioNt: 0.95 },
+    isOn: (v) => Number(v.taxiSupplyRatioNt) > 1,
+  },
+];
+
+const DIFF_KEYS = [
+  ["paxPerHour", "Demand", (v) => `${Math.round(v)}/h`],
+  ["stands.urban", "Urban bays", (v) => Math.round(v)],
+  ["stands.nt", "NT bays", (v) => Math.round(v)],
+  ["service", "Boarding", (v) => `${Number(v).toFixed(1)} min`],
+  ["dispatchIntervalMin", "Dispatch", (v) => (Number(v) === 0 ? "continuous" : `${v} min`)],
+  ["appShare", "App check-in", (v) => `${Math.round(v * 100)}%`],
+  ["flexShare", "Flexible taxis", (v) => `${Math.round(v * 100)}%`],
+  ["pooledStands", "Pooled bays", (v) => (v ? "on" : "off")],
+  ["misrouteProb", "Wrong lane", (v) => `${Math.round(Number(v) * 100)}%`],
+  ["taxiSupplyRatioUrban", "Urban supply", (v) => `${Number(v).toFixed(2)}×`],
+  ["taxiSupplyRatioNt", "NT supply", (v) => `${Number(v).toFixed(2)}×`],
+  ["bufferCapacity", "Buffer", (v) => Math.round(v)],
+  ["patienceMeanMin", "Patience", (v) => `${Math.round(v)} min`],
+];
+
+function baselineValues() {
+  return { ...PRESETS.baseline };
+}
+
+function renderCards() {
+  const host = $("#policyCards");
+  if (!host) return;
+  host.innerHTML = "";
+  for (const card of CARDS) {
+    const on = card.isOn(state.values);
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "card" + (on ? " on" : "");
+    btn.setAttribute("aria-pressed", String(on));
+    const eff =
+      card.effect == null
+        ? "…"
+        : `${card.effect >= 0 ? "+" : ""}${card.effect.toFixed(1)} min`;
+    const zero = card.effect != null && Math.abs(card.effect) < 0.08;
+    const bad = card.effect != null && card.effect >= 0.08;
+    btn.innerHTML =
+      `<span class="dot"></span><span class="t">${card.label}</span>` +
+      `<span class="eff${zero ? " zero" : bad ? " bad" : ""}" title="effect on mean wait when applied alone (this window)">${eff}</span>`;
+    btn.addEventListener("click", () => {
+      Object.assign(state.values, on ? card.off : card.on);
+      syncControls();
+      renderCards();
+      setPreset(null);
+      run();
+    });
+    host.appendChild(btn);
+  }
+}
+
+/** Mean wait with a card applied on its own (cached once). */
+function computeEffects() {
+  try {
+    const seeds = [11, 12, 13];
+    const baseCfg = buildConfig(baselineValues());
+    const base = seeds.reduce((a, s) => a + runSimulation(baseCfg, s).metrics.waitMean, 0) / seeds.length;
+    for (const card of CARDS) {
+      const cfg = buildConfig({ ...baselineValues(), ...card.on });
+      const m = seeds.reduce((a, s) => a + runSimulation(cfg, s).metrics.waitMean, 0) / seeds.length;
+      card.effect = m - base;
+    }
+    renderCards();
+  } catch (err) {
+    /* effects are a nicety; never break the page for them */
+  }
+}
+
+/* ---------------- A/B state ---------------- */
+let sceneB = null;
+let bKey = null;
+
+function ensureSceneB() {
+  if (sceneB) return sceneB;
+  sceneB = new Scene3D($("#sceneB"));
+  sceneB.setQuality(valueOf("highQuality") ? "high" : "low");
+  return sceneB;
+}
+
+function ensureRunA() {
+  if (state.runA && state.runA.key === String(state.window)) return;
+  const res = runSimulation(buildConfig(baselineValues()), state.seed);
+  state.runA = { ...res, key: String(state.window) };
+  bKey = null;
+}
+
+const mean = (a) => a.reduce((x, y) => x + y, 0) / a.length;
+function ci95(vals) {
+  if (vals.length < 2) return 0;
+  const m = mean(vals);
+  const sd = Math.sqrt(vals.reduce((a, v) => a + (v - m) ** 2, 0) / (vals.length - 1));
+  return (1.96 * sd) / Math.sqrt(vals.length);
+}
+
+function updateVerdict() {
+  const trials = Number($("#trialsSel").value) || 1;
+  const aCfg = buildConfig(baselineValues());
+  const bCfg = buildConfig();
+  const A = [];
+  const B = [];
+  for (let i = 0; i < trials; i++) {
+    const seed = 700 + i;
+    A.push(runSimulation(aCfg, seed).metrics);
+    B.push(runSimulation(bCfg, seed).metrics);
+  }
+
+  const aW = A.map((r) => r.waitMean);
+  const bW = B.map((r) => r.waitMean);
+  const aM = mean(aW);
+  const bM = mean(bW);
+  const aC = ci95(aW);
+  const bC = ci95(bW);
+  const rel = aM ? ((bM - aM) / aM) * 100 : 0;
+  const overlap = trials > 1 ? !(aM + aC < bM - bC || bM + bC < aM - aC) : false;
+
+  const aP = mean(A.map((r) => r.waitP90));
+  const bP = mean(B.map((r) => r.waitP90));
+  const aX = mean(A.map((r) => r.abandonRatePct));
+  const bX = mean(B.map((r) => r.abandonRatePct));
+  const aQ = mean(A.map((r) => r.queueAvg));
+  const bQ = mean(B.map((r) => r.queueAvg));
+
+  let verdict;
+  if (trials === 1) {
+    verdict = `<b>${rel >= 0 ? "+" : ""}${rel.toFixed(0)}%</b> mean wait · A ${aM.toFixed(1)} → B ${bM.toFixed(1)} min
+      <span style="opacity:.6">· single trial, switch trials to 10 for a significance check</span>`;
+  } else if (overlap) {
+    verdict = `<span class="none">No measurable difference</span> — the 95% intervals overlap
+      (A ${aM.toFixed(1)}±${aC.toFixed(1)}, B ${bM.toFixed(1)}±${bC.toFixed(1)} min)`;
+  } else {
+    verdict = `<b>${rel >= 0 ? "+" : ""}${rel.toFixed(0)}%</b> mean wait · A ${aM.toFixed(1)} → B ${bM.toFixed(1)} min
+      <span style="opacity:.7">· 95% CI of B [${(bM - bC).toFixed(1)}, ${(bM + bC).toFixed(1)}] does not overlap A</span>`;
+  }
+  $("#cmpVerdict").innerHTML = verdict;
+
+  const chip = (label, a, b, unit, digits = 1) =>
+    `<span class="chipdiff">${label} <b>${a.toFixed(digits)}${unit}</b> → <b>${b.toFixed(digits)}${unit}</b></span>`;
+  $("#cmpDiff").innerHTML = [
+    chip("90th pct", aP, bP, " min"),
+    chip("gave up", aX, bX, "%"),
+    chip("queue", aQ, bQ, "", 0),
+  ].join("");
+
+  // what actually differs between A and B
+  const base = baselineValues();
+  const diffs = [];
+  for (const [key, label, fmt] of DIFF_KEYS) {
+    const av = base[key] !== undefined ? base[key] : DEFAULTS[key];
+    const bv = state.values[key] !== undefined ? state.values[key] : DEFAULTS[key];
+    if (av === undefined || bv === undefined) continue;
+    if (String(av) === String(bv)) continue;
+    diffs.push(`<span class="chipdiff">${label} <b>${fmt(av)}</b> → <b>${fmt(bv)}</b></span>`);
+  }
+  $("#cmpDiff").innerHTML += diffs.length
+    ? diffs.join("")
+    : `<span class="chipdiff">identical settings — change a policy or a slider</span>`;
+}
+
+function refreshStage() {
+  const cmp = state.compare;
+  const stage = $("#stage");
+  stage.classList.toggle("split", cmp && !IS_PHONE);
+  stage.classList.toggle("swap", cmp && IS_PHONE);
+  document.body.classList.toggle("comparing", cmp);
+  $("#compareBar").hidden = !cmp;
+  $("#tagA").hidden = !cmp;
+  $("#tagB").hidden = !cmp;
+
+  const showA = cmp && IS_PHONE && state.showA;
+  $("#scene").hidden = !!showA;
+  $("#sceneB").hidden = !cmp || showA;
+  $("#tagA").hidden = !cmp || (IS_PHONE && !showA);
+  $("#tagB").hidden = !cmp || (IS_PHONE && showA);
+  const swap = $("#swapBtn");
+  if (swap) {
+    swap.hidden = !(cmp && IS_PHONE);
+    swap.textContent = state.showA ? "Show B" : "Show A";
+  }
+
+  requestAnimationFrame(() => {
+    scene.resize();
+    if (sceneB) sceneB.resize();
+  });
+}
+
+function setCompare(on) {
+  state.compare = on;
+  state.showA = false;
+  if (on) {
+    ensureRunA();
+    refreshStage();
+    updateVerdict();
+  } else {
+    refreshStage();
+  }
+  $("#cmpBtn").classList.toggle("active", on);
+  $("#cmpBtn").textContent = on ? "Comparing" : "Compare";
+}
+
 function init() {
   buildControls();
   syncControls();
@@ -533,6 +796,27 @@ function init() {
     // on a phone, get out of the way so the result is visible immediately
     if (IS_PHONE) setSheet(false);
   });
+
+  renderCards();
+  setTimeout(computeEffects, 500);
+
+  $("#cmpBtn").addEventListener("click", () => setCompare(!state.compare));
+  $("#cmpClose").addEventListener("click", () => setCompare(false));
+  $("#trialsSel").addEventListener("change", () => {
+    if (state.compare) updateVerdict();
+  });
+
+  // mobile: flip between the two scenes
+  const swapBtn = document.createElement("button");
+  swapBtn.id = "swapBtn";
+  swapBtn.className = "ghost small";
+  swapBtn.hidden = true;
+  swapBtn.textContent = "Show A";
+  swapBtn.addEventListener("click", () => {
+    state.showA = !state.showA;
+    refreshStage();
+  });
+  document.querySelector(".cmp-actions").prepend(swapBtn);
   $("#playBtn").addEventListener("click", () => {
     state.playing = !state.playing;
     $("#playBtn").textContent = state.playing ? "Pause" : "Play";
@@ -543,7 +827,12 @@ function init() {
   });
   $("#windowSel").addEventListener("change", (e) => {
     state.window = Number(e.target.value);
+    state.runA = null;
     run();
+    if (state.compare) {
+      ensureRunA();
+      updateVerdict();
+    }
   });
   $("#seedBtn").addEventListener("click", () => {
     state.seed = 1 + Math.floor(Math.random() * 9999);
@@ -579,6 +868,7 @@ function init() {
   if (q.get("window")) state.window = Number(q.get("window"));
 
   run();
+  if (q.get("compare") === "1") setCompare(true);
 
   if (q.get("t")) {
     state.playT = state.from + Number(q.get("t"));
@@ -590,6 +880,8 @@ function init() {
   window.__sim = {
     scene,
     state,
+    setCompare,
+    getSceneB: () => sceneB,
     /** Let the walkers reach their targets (used for stills and video). */
     settle(seconds = 3) {
       const hour = (state.meta ? state.meta.startHour : 8) + state.playT / 60;

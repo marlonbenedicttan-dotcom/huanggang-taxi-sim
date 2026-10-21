@@ -26,10 +26,12 @@
           <button data-preset="smart">Smart dispatch</button>
         </div>
 
+        <div id="policyCards" class="cards"></div>
         <div id="controls" class="controls"></div>
 
         <div class="runbar">
           <button id="runBtn" class="primary">Run simulation</button>
+          <button id="cmpBtn" class="ghost wide" title="Compare with the current process">Compare</button>
           <button id="seedBtn" class="ghost" title="New random seed">↻</button>
         </div>
         <p class="hint"><span id="seedOut">1</span> · <span id="hint">ready</span></p>
@@ -41,7 +43,12 @@
       </aside>
 
       <main>
-        <canvas id="scene"></canvas>
+        <div id="stage">
+          <canvas id="scene"></canvas>
+          <canvas id="sceneB" hidden></canvas>
+          <div id="tagA" class="stage-tag" hidden>A · Current process</div>
+          <div id="tagB" class="stage-tag" hidden>B · Your proposal</div>
+        </div>
 
         <div id="hud">
           <div id="clock">08:00</div>
@@ -65,6 +72,24 @@
         </div>
 
         <div id="kpis"></div>
+        <div id="compareBar" hidden>
+          <div class="cmp-head">
+            <strong id="cmpTitle">Comparing A and B</strong>
+            <div class="cmp-actions">
+              <label class="trials">trials
+                <select id="trialsSel">
+                  <option value="1">1</option>
+                  <option value="10" selected>10</option>
+                  <option value="30">30</option>
+                </select>
+              </label>
+              <button id="cmpClose" class="ghost small">Exit</button>
+            </div>
+          </div>
+          <div id="cmpVerdict" class="cmp-verdict">—</div>
+          <div id="cmpDiff" class="cmp-diff"></div>
+        </div>
+
         <div id="chartWrap">
           <div class="chart-head">
             <span>Passengers waiting</span>
