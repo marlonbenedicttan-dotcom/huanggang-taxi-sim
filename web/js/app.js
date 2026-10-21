@@ -322,7 +322,12 @@ function run() {
   state.frames = res.frames;
   state.meta = res.meta;
   scene.setScene(res.meta);
-  state.playT = 0;
+  if (!state.started) {
+    state.playT = state.from + 20;   // skip the empty first minutes
+    state.started = true;
+  } else {
+    state.playT = state.from;
+  }
   state.playing = true;
 
   renderKpis(res.metrics, ms);
@@ -354,8 +359,8 @@ const KPI = [
   { key: "waitP90", label: "90th percentile", unit: "min", digits: 1, lowerBetter: true },
   { key: "abandonRatePct", label: "Gave up", unit: "%", digits: 1, lowerBetter: true },
   { key: "queueAvg", label: "Avg waiting", unit: "parties", digits: 0, lowerBetter: true },
-  { key: "standUtilPct", label: "Bays busy", unit: "%", digits: 0, lowerBetter: false },
-  { key: "bufferAvg", label: "Taxis waiting", unit: "", digits: 0, lowerBetter: false },
+  { key: "standUtilPct", label: "Avg bays busy", unit: "%", digits: 0, lowerBetter: false },
+  { key: "bufferAvg", label: "Avg taxis waiting", unit: "", digits: 0, lowerBetter: false },
 ];
 
 function renderKpis(m, ms) {
@@ -685,21 +690,30 @@ function renderCards() {
   }
 }
 
-/** Mean wait with a card applied on its own (cached once). */
+/** Mean wait with a card applied on its own, one card per tick so the main
+ *  thread is never blocked for more than a single simulation. */
 function computeEffects() {
-  try {
-    const seeds = [11, 12, 13];
-    const baseCfg = buildConfig(baselineValues());
-    const base = seeds.reduce((a, s) => a + runSimulation(baseCfg, s).metrics.waitMean, 0) / seeds.length;
-    for (const card of CARDS) {
-      const cfg = buildConfig({ ...baselineValues(), ...card.on });
-      const m = seeds.reduce((a, s) => a + runSimulation(cfg, s).metrics.waitMean, 0) / seeds.length;
-      card.effect = m - base;
-    }
-    renderCards();
-  } catch (err) {
-    /* effects are a nicety; never break the page for them */
-  }
+  let base = null;
+  let i = 0;
+  const seeds = [11, 12];
+  const avg = (cfg) =>
+    seeds.reduce((a, s) => a + runSimulation(cfg, s).metrics.waitMean, 0) / seeds.length;
+
+  const step = () => {
+    try {
+      if (base === null) {
+        base = avg(buildConfig(referenceValues()));
+      } else if (i < CARDS.length) {
+        const card = CARDS[i++];
+        card.effect = avg(buildConfig({ ...referenceValues(), ...card.on })) - base;
+        renderCards();
+      } else {
+        return;
+      }
+    } catch {}
+    setTimeout(step, 30);
+  };
+  setTimeout(step, 30);
 }
 
 /* ---------------- A/B state ---------------- */
@@ -845,6 +859,7 @@ const TOUR = [
       "Empty taxis queue in the buffer on the left, passengers wait in three lanes, " +
       "and the pickup bays are at the far end. Drag to orbit, pinch or scroll to zoom.",
     target: "#stage",
+    sheet: false,
   },
   {
     title: "Switch on a policy",
@@ -852,6 +867,7 @@ const TOUR = [
       "Each card is one measure a port could adopt. The number on the right is its " +
       "effect on mean wait when applied on its own — so you can see which idea matters.",
     target: "#policyCards",
+    sheet: true,
   },
   {
     title: "Prove something changed",
@@ -859,6 +875,7 @@ const TOUR = [
       "Compare runs the current process (A) and your proposal (B) on the same seed, " +
       "then checks whether the confidence intervals overlap before claiming an effect.",
     target: "#cmpBtn",
+    sheet: false,
   },
 ];
 
@@ -871,10 +888,13 @@ function paintTour() {
   $("#tourText").textContent = step.text;
   $("#tourNext").textContent = tourIndex === TOUR.length - 1 ? "Got it" : "Next";
   document.querySelectorAll(".tour-highlight").forEach((el) => el.classList.remove("tour-highlight"));
+  // on a phone the cards live inside the bottom sheet: open it so the step
+  // actually points at something visible
+  if (IS_PHONE) document.body.classList.toggle("sheet-open", !!step.sheet);
   const target = document.querySelector(step.target);
   if (target) {
     target.classList.add("tour-highlight");
-    if (target.scrollIntoView) target.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    if (target.scrollIntoView) target.scrollIntoView({ block: "nearest" });
   }
 }
 
@@ -887,7 +907,11 @@ function startTour() {
 function endTour() {
   $("#tour").hidden = true;
   document.querySelectorAll(".tour-highlight").forEach((el) => el.classList.remove("tour-highlight"));
+  if (IS_PHONE) document.body.classList.remove("sheet-open");
   try { localStorage.setItem("hg_tour_done", "1"); } catch {}
+  // the effect chips are the first thing worth computing; do it now that the
+  // tour is out of the way, one card at a time so the UI never stalls
+  setTimeout(computeEffects, 150);
 }
 
 function encodeScenario() {
@@ -955,7 +979,6 @@ function init() {
   });
 
   renderCards();
-  setTimeout(computeEffects, 500);
 
   $("#tourNext").addEventListener("click", () => {
     if (tourIndex >= TOUR.length - 1) endTour();
@@ -967,9 +990,18 @@ function init() {
   let seenTour = false;
   try { seenTour = localStorage.getItem("hg_tour_done") === "1"; } catch {}
   const qq = new URLSearchParams(location.search);
-  if (qq.get("tour") === "1" || (!seenTour && qq.get("compare") !== "1" && !qq.get("s"))) {
+  const tourWanted = qq.get("tour") === "1" ||
+    (!seenTour && qq.get("compare") !== "1" && !qq.get("s"));
+  if (tourWanted) {
     setTimeout(startTour, 400);
+  } else {
+    setTimeout(computeEffects, 400);
   }
+
+  // Esc dismisses the tour at any point
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && !$("#tour").hidden) endTour();
+  });
 
   $("#cmpBtn").addEventListener("click", () => setCompare(!state.compare));
   $("#cmpClose").addEventListener("click", () => setCompare(false));

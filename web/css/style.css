@@ -684,23 +684,41 @@ button.ghost.wide { width: auto; padding: 0 12px; font-size: 12.5px; }
 .linklike:hover { color: #9fc4ea; }
 
 /* -------------------------------- tour ---------------------------------- */
+/* A callout, not a modal: no blur, no scrim, and the page stays clickable
+   underneath so the thing being explained is visible and usable. */
 #tour {
   position: fixed;
   inset: 0;
   z-index: 60;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(5, 9, 15, 0.55);
-  backdrop-filter: blur(2px);
+  pointer-events: none;
+  background: none;
 }
 .tour-card {
-  width: min(360px, calc(100vw - 40px));
+  position: absolute;
+  top: 76px;
+  left: 352px;
+  width: 322px;
+  pointer-events: auto;
   background: #131c2b;
-  border: 1px solid #2c405e;
+  border: 1px solid #33507a;
   border-radius: 14px;
-  padding: 16px 18px 14px;
-  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.6);
+  padding: 15px 17px 13px;
+  box-shadow: 0 22px 55px rgba(0, 0, 0, 0.62);
+}
+@media (max-width: 820px) {
+  .tour-card {
+    top: auto;
+    left: 12px;
+    right: 12px;
+    width: auto;
+    bottom: calc(172px + env(safe-area-inset-bottom));
+  }
+  /* when the step opens the sheet, move the callout to the free area on top
+     so it does not cover the cards it is describing */
+  body.sheet-open .tour-card {
+    top: calc(64px + env(safe-area-inset-top));
+    bottom: auto;
+  }
 }
 .tour-step {
   font: 10.5px ui-monospace, SFMono-Regular, Menlo, monospace;
