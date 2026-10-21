@@ -1,0 +1,15 @@
+{
+  "name": "huanggang-taxi-sim",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Website tooling for the Huanggang Port taxi dispatch simulator (the site itself is static and dependency-free).",
+  "scripts": {
+    "serve": "python3 serve.py",
+    "parity": "python3 tests/parity_check.py",
+    "shot": "node tests/shoot.mjs",
+    "video": "node tests/record.mjs"
+  },
+  "devDependencies": {
+    "playwright-core": "^1.64.1"
+  }
+}

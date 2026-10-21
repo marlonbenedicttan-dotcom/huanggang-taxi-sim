@@ -1,0 +1,10 @@
+# Render blueprint — static site, no server, no cold start.
+# Push the repo, then: Render -> New -> Blueprint. Or create a Static Site
+# manually with an empty build command and publish directory "web".
+services:
+  - type: web
+    name: huanggang-taxi-sim
+    runtime: static
+    buildCommand: ""
+    staticPublishPath: ./web
+    pullRequestPreviewsEnabled: true
