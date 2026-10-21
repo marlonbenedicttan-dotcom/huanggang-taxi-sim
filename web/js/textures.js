@@ -135,22 +135,33 @@ export function glowTexture() {
   }, { repeat: [1, 1] });
 }
 
-/** Painted lane sign (white on dark), used on the hanging boards. */
-export function signTexture(text, color = "#e9f2ff") {
+/**
+ * Lane sign board. The font auto-fits the board so long names like
+ * "NEW TERRITORIES" can never be clipped.
+ */
+export function signTexture(text, bg = "#1b2534", fg = "#ffffff") {
   const c = document.createElement("canvas");
   c.width = 512;
-  c.height = 160;
+  c.height = 152;
   const g = c.getContext("2d");
-  g.fillStyle = "#1b2534";
+
+  g.fillStyle = bg;
   g.fillRect(0, 0, c.width, c.height);
-  g.strokeStyle = "rgba(120,150,190,0.5)";
+  g.strokeStyle = "rgba(255,255,255,0.6)";
   g.lineWidth = 6;
-  g.strokeRect(4, 4, c.width - 8, c.height - 8);
-  g.font = "700 74px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
-  g.fillStyle = color;
+  g.strokeRect(3, 3, c.width - 6, c.height - 6);
+
+  let size = 78;
+  do {
+    g.font = `700 ${size}px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`;
+    size -= 3;
+  } while (g.measureText(text).width > c.width - 44 && size > 26);
+
+  g.fillStyle = fg;
   g.textAlign = "center";
   g.textBaseline = "middle";
-  g.fillText(text, c.width / 2, c.height / 2 + 4);
+  g.fillText(text, c.width / 2, c.height / 2 + 3);
+
   const tex = new THREE.CanvasTexture(c);
   tex.colorSpace = THREE.SRGBColorSpace;
   tex.anisotropy = 4;

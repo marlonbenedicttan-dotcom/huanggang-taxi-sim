@@ -11,9 +11,16 @@
  */
 
 export const CLS = ["urban", "nt", "prebook", "flex"];
-export const CLS_LABEL = ["Urban (red)", "New Territories (green)", "Pre-booked", "Flexible"];
+export const CLS_LABEL = [
+  "Urban taxis (red) · HK Island & Kowloon",
+  "New Territories taxis (green)",
+  "Pre-booked taxis (blue)",
+  "Flexible taxis",
+];
 /** Full names on lane signs: abbreviations confuse first-time viewers. */
 export const LANE_TITLE = ["URBAN", "NEW TERRITORIES", "PRE-BOOKED", "FLEXIBLE"];
+/** Short form for the live HUD counters (passengers waiting per lane). */
+export const CLS_SHORT = ["Urban", "New Territories", "Pre-booked"];
 export const CLS_COLOR = [0xe8503f, 0x17a67c, 0x2f7fd4, 0xf5a623];
 export const CSS_COLOR = ["#e8503f", "#17a67c", "#2f7fd4", "#f5a623"];
 

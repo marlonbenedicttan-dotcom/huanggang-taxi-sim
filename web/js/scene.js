@@ -401,7 +401,11 @@ export class Scene3D {
       this.root.add(glow);
       this.laneGlow[id] = glow;
 
-      const tag = this.label(LANE_TITLE[id], "#51606f", 0.36);
+      const tag = this.label(
+        LANE_TITLE[id],
+        "#" + new THREE.Color(CLS_COLOR[id]).lerp(new THREE.Color(0x1d2a33), 0.45).getHexString(),
+        0.42
+      );
       tag.position.set(3.4, 1.0, y - 1.7);
       this.root.add(tag);
     }
@@ -679,19 +683,20 @@ export class Scene3D {
     // hanging lane signs above the queue entrance
     for (const id of [0, 1, 2]) {
       const y = LANES[CLS[id]];
-      const tex = signTexture(LANE_TITLE[id], "#eaf3ff");
+      const laneHex = "#" + new THREE.Color(CLS_COLOR[id]).getHexString();
+      const tex = signTexture(LANE_TITLE[id], laneHex, "#ffffff");
       const board = new THREE.Mesh(
-        new THREE.PlaneGeometry(3.1, 0.96),
+        new THREE.PlaneGeometry(3.9, 1.16),
         new THREE.MeshStandardMaterial({
-          map: tex, roughness: 0.55,
-          emissive: 0xffffff, emissiveMap: tex, emissiveIntensity: 0.55,
+          map: tex, roughness: 0.5,
+          emissive: 0xffffff, emissiveMap: tex, emissiveIntensity: 0.35,
         })
       );
-      board.position.set(12.9, 2.5, y);
+      board.position.set(12.9, 2.6, y);
       this.root.add(board);
-      for (const dx of [-0.9, 0.9]) {
-        const rod = new THREE.Mesh(box(0.04, 0.9, 0.04), metal);
-        rod.position.set(12.9 + dx, 2.9, y);
+      for (const dx of [-1.3, 1.3]) {
+        const rod = new THREE.Mesh(box(0.04, 1.0, 0.04), metal);
+        rod.position.set(12.9 + dx, 3.15, y);
         this.root.add(rod);
       }
     }

@@ -8,7 +8,7 @@
 import { runSimulation, DEFAULTS, SMART } from "./sim.js";
 import { Scene3D } from "./scene.js";
 import { prepare } from "./assets.js";
-import { CSS_COLOR, CLS_LABEL } from "./layout.js";
+import { CSS_COLOR, CLS_LABEL, CLS_SHORT } from "./layout.js";
 
 const $ = (sel) => document.querySelector(sel);
 
@@ -21,9 +21,9 @@ const GROUPS = [
     items: [
       { key: "paxPerHour", label: "Passengers arriving", min: 300, max: 850, step: 10, unit: "pax/h",
         hint: "Walk-up passengers per hour, averaged over the shift. Count arrivals at the taxi hall for 2-3 days." },
-      { key: "taxiSupplyRatioUrban", label: "Urban taxis arriving", min: 0.7, max: 1.4, step: 0.05, unit: "× demand",
+      { key: "taxiSupplyRatioUrban", label: "Urban (red) taxis arriving", min: 0.7, max: 1.4, step: 0.05, unit: "× demand",
         hint: "Empty urban taxis entering the buffer, relative to passenger demand. 1.0 means supply matches demand on average." },
-      { key: "taxiSupplyRatioNt", label: "New Territories taxis", min: 0.7, max: 1.4, step: 0.05, unit: "× demand",
+      { key: "taxiSupplyRatioNt", label: "NT (green) taxis arriving", min: 0.7, max: 1.4, step: 0.05, unit: "× demand",
         hint: "Same for New Territories taxis. Below 1.0 the NT lane is structurally short of taxis." },
       { key: "stands.urban", label: "Urban pickup bays", min: 3, max: 14, step: 1, int: true,
         hint: "Physical bays serving the urban queue. Each bay boards roughly one taxi every 1.5 minutes." },
@@ -620,7 +620,7 @@ function updateHud(frame) {
     [2, frame.q[2]],
   ]
     .filter(([, n]) => n > 0)
-    .map(([c, n]) => `<span class="chip"><i style="background:${CSS_COLOR[c]}"></i>${n} ${CLS_LABEL[c].split(" (")[0]}</span>`)
+    .map(([c, n]) => `<span class="chip"><i style="background:${CSS_COLOR[c]}"></i>${n} ${CLS_SHORT[c]}</span>`)
     .join("");
   const bufLabel = IS_PHONE ? `${frame.buf} taxis` : `${frame.buf} taxis in buffer`;
   $("#counts").innerHTML = chips + `<span class="chip"><i class="buf"></i>${bufLabel}</span>`;
