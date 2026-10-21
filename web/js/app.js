@@ -89,9 +89,10 @@ const IS_PHONE =
   (navigator.maxTouchPoints > 1 && window.innerWidth < 1100);
 
 const WINDOWS = [
-  { label: "Morning peak 08–11", from: 0, to: 180 },
+  { label: "Peak 08:30–09:15", from: 30, to: 75 },   // default: a watchable slice
+  { label: "Morning 08–11", from: 0, to: 180 },
   { label: "Midday 11–14", from: 180, to: 360 },
-  { label: "Evening peak 16–19", from: 480, to: 660 },
+  { label: "Evening 16–19", from: 480, to: 660 },
   { label: "Whole shift 08–20", from: 0, to: 720 },
 ];
 
@@ -118,7 +119,7 @@ const PRESETS = {
 const state = {
   values: { ...PRESETS.baseline, highQuality: !IS_PHONE },
   window: 0,
-  speed: 8,          // simulated minutes per real second
+  speed: 3,          // simulated minutes per real second
   seed: 1,
   frames: [],
   from: 0,
@@ -322,6 +323,7 @@ function run() {
   state.frames = res.frames;
   state.meta = res.meta;
   scene.setScene(res.meta);
+  scene.attachLabels($("#zoneLabels"));
   if (!state.started) {
     state.playT = state.from + 20;   // skip the empty first minutes
     state.started = true;
@@ -416,7 +418,7 @@ function drawChart() {
   const Y = (v) => pad.t + ih - (v / maxQ) * ih;
 
   // gridlines
-  cctx.strokeStyle = "rgba(120,140,170,0.14)";
+  cctx.strokeStyle = "rgba(70,80,95,0.13)";
   cctx.lineWidth = 1;
   for (let g = 0; g <= 4; g++) {
     const y = pad.t + (ih * g) / 4;
@@ -425,7 +427,7 @@ function drawChart() {
     cctx.lineTo(w - pad.r, y);
     cctx.stroke();
   }
-  cctx.fillStyle = "rgba(150,170,195,0.75)";
+  cctx.fillStyle = "rgba(70,80,95,0.68)";
   cctx.font = "10px ui-monospace, SFMono-Regular, Menlo, monospace";
   cctx.fillText(String(Math.round(maxQ)), 4, pad.t + 8);
   cctx.fillText("0", 4, pad.t + ih);
@@ -457,12 +459,12 @@ function drawChart() {
     if (i === 0) cctx.moveTo(X(i), Y(q));
     else cctx.lineTo(X(i), Y(q));
   }
-  cctx.strokeStyle = "#cfd9e8";
+  cctx.strokeStyle = "#46505c";
   cctx.lineWidth = 1.4;
   cctx.stroke();
 
   // hour ticks
-  cctx.fillStyle = "rgba(150,170,195,0.65)";
+  cctx.fillStyle = "rgba(70,80,95,0.55)";
   const startHour = state.meta ? state.meta.startHour : 8;
   const h0 = startHour + state.from / 60;
   for (let hh = 0; hh <= 6; hh += 2) {
@@ -483,7 +485,7 @@ function drawPlayhead() {
   );
   const x = pad.l + (i / (state.frames.length - 1)) * chartCache.iw;
   cctx.save();
-  cctx.strokeStyle = "rgba(255,255,255,0.55)";
+  cctx.strokeStyle = "rgba(50,60,75,0.45)";
   cctx.lineWidth = 1;
   cctx.beginPath();
   cctx.moveTo(x, pad.t);
@@ -558,6 +560,7 @@ function loop(now) {
     const key = `${state.window}-${state.runA.frames.length}`;
     if (bKey !== key) {
       sb.setScene(state.runA.meta);
+      sb.attachLabels(null);
       sb.setQuality(valueOf("highQuality") ? "high" : "low");
       bKey = key;
     }
@@ -991,7 +994,7 @@ function init() {
   try { seenTour = localStorage.getItem("hg_tour_done") === "1"; } catch {}
   const qq = new URLSearchParams(location.search);
   const tourWanted = qq.get("tour") === "1" ||
-    (!seenTour && qq.get("compare") !== "1" && !qq.get("s"));
+    (qq.get("tour") !== "0" && !seenTour && qq.get("compare") !== "1" && !qq.get("s"));
   if (tourWanted) {
     setTimeout(startTour, 400);
   } else {
@@ -1008,6 +1011,27 @@ function init() {
   $("#trialsSel").addEventListener("change", () => {
     if (state.compare) updateVerdict();
   });
+
+  // drag the chart to scrub through the simulation
+  const scrub = (e) => {
+    if (!state.frames.length) return;
+    const r = chart.getBoundingClientRect();
+    const pad = 34;
+    const frac = Math.min(1, Math.max(0, (e.clientX - r.left - pad) / (r.width - pad - 8)));
+    const i = Math.round(frac * (state.frames.length - 1));
+    state.playT = state.from + state.step * i;
+    state.playing = false;
+    $("#playBtn").textContent = "Play";
+  };
+  let scrubbing = false;
+  chart.addEventListener("pointerdown", (e) => {
+    scrubbing = true;
+    chart.setPointerCapture(e.pointerId);
+    scrub(e);
+  });
+  chart.addEventListener("pointermove", (e) => scrubbing && scrub(e));
+  chart.addEventListener("pointerup", () => (scrubbing = false));
+  chart.addEventListener("pointercancel", () => (scrubbing = false));
 
   // mobile: flip between the two scenes
   const swapBtn = document.createElement("button");

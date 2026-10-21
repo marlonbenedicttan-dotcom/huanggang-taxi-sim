@@ -6,7 +6,7 @@
     <title>Huanggang Port · Taxi Dispatch Simulator</title>
     <meta name="description" content="Interactive 3D simulation of the Huanggang Port taxi queue: change demand, taxi supply, bays and dispatch policy, then watch the queue build." />
     <link rel="stylesheet" href="./css/style.css" />
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%230b1018'/><rect x='7' y='13' width='18' height='7' rx='2' fill='%23e0564a'/><circle cx='11' cy='22' r='2.2' fill='%23cfd9e8'/><circle cx='21' cy='22' r='2.2' fill='%23cfd9e8'/></svg>" />
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 44'><rect width='64' height='44' rx='10' fill='%23fbf7ef'/><rect x='10' y='20' width='44' height='12' rx='5' fill='%23ff8a3d'/><path d='M18 20 L24 12 h16 L46 20 Z' fill='%23ffb02e'/><circle cx='22' cy='32' r='5' fill='%232f3138'/><circle cx='42' cy='32' r='5' fill='%232f3138'/></svg>" />
   </head>
   <body>
     <div id="app">
@@ -14,7 +14,23 @@
         <button id="sheetToggle" class="sheet-handle" aria-expanded="false"
                 aria-label="Show controls"><span></span></button>
         <header class="brand">
-          <div class="mark"></div>
+          <svg class="logo" viewBox="0 0 64 44" aria-hidden="true">
+            <ellipse cx="32" cy="40" rx="25" ry="3.2" fill="#2e3138" opacity=".12"/>
+            <rect x="5" y="18" width="54" height="15" rx="6.5" fill="#ff8a3d"/>
+            <path d="M16.5 18 L23 9 h18 L47.5 18 Z" fill="#ffb02e"/>
+            <rect x="24.5" y="11.6" width="6.4" height="5.6" rx="1.8" fill="#fffdf8"/>
+            <rect x="33" y="11.6" width="6.4" height="5.6" rx="1.8" fill="#fffdf8"/>
+            <rect x="26.5" y="3.4" width="11" height="5.6" rx="2.2" fill="#e8503f"/>
+            <text x="32" y="7.6" font-size="3.5" font-weight="700" text-anchor="middle"
+                  fill="#fffdf8" font-family="system-ui, sans-serif">TAXI</text>
+            <g fill="#fffdf8" opacity=".92">
+              <rect x="11" y="24.5" width="5" height="3.6"/><rect x="21" y="24.5" width="5" height="3.6"/>
+              <rect x="31" y="24.5" width="5" height="3.6"/><rect x="41" y="24.5" width="5" height="3.6"/>
+              <rect x="51" y="24.5" width="5" height="3.6"/>
+            </g>
+            <circle cx="19" cy="33.5" r="6.6" fill="#2f3138"/><circle cx="19" cy="33.5" r="2.7" fill="#fffdf8"/>
+            <circle cx="45" cy="33.5" r="6.6" fill="#2f3138"/><circle cx="45" cy="33.5" r="2.7" fill="#fffdf8"/>
+          </svg>
           <div>
             <h1>Huanggang Port</h1>
             <p>Taxi dispatch simulator</p>
@@ -49,6 +65,7 @@
         <div id="stage">
           <canvas id="scene"></canvas>
           <canvas id="sceneB" hidden></canvas>
+          <div id="zoneLabels" aria-hidden="true"></div>
           <div id="tagA" class="stage-tag" hidden>A · Current process</div>
           <div id="tagB" class="stage-tag" hidden>B · Your proposal</div>
         </div>
@@ -62,10 +79,11 @@
           <div class="playback">
             <button id="playBtn">Pause</button>
             <select id="windowSel" aria-label="Time window">
-              <option value="0">Morning peak 08–11</option>
-              <option value="1">Midday 11–14</option>
-              <option value="2">Evening peak 16–19</option>
-              <option value="3">Whole shift 08–20</option>
+              <option value="0">Peak 08:30–09:15 · 45 min</option>
+              <option value="1">Morning 08–11</option>
+              <option value="2">Midday 11–14</option>
+              <option value="3">Evening 16–19</option>
+              <option value="4">Whole shift 08–20</option>
             </select>
             <label class="speed">
               <input id="speed" type="range" min="1" max="30" step="1" value="8" />

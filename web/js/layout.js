@@ -12,13 +12,13 @@
 
 export const CLS = ["urban", "nt", "prebook", "flex"];
 export const CLS_LABEL = ["Urban (red)", "NT (green)", "Pre-booked", "Flexible"];
-export const CLS_COLOR = [0xe0564a, 0x3fa86a, 0x4a90d9, 0xe8a33d];
-export const CSS_COLOR = ["#e0564a", "#3fa86a", "#4a90d9", "#e8a33d"];
+export const CLS_COLOR = [0xe8503f, 0x17a67c, 0x2f7fd4, 0xf5a623];
+export const CSS_COLOR = ["#e8503f", "#17a67c", "#2f7fd4", "#f5a623"];
 
 export const LANES = { urban: 4, nt: 12, prebook: 20, flex: 25 };
 
-export const TAXI = { length: 0.9, height: 0.45, width: 0.5 };
-export const PERSON = { height: 0.52, radius: 0.075 };
+export const TAXI = { length: 1.0, height: 0.56, width: 0.6 };
+export const PERSON = { height: 0.56, radius: 0.095 };
 
 /** Terminal wall along the north edge; three doors feed the three lanes. */
 export const TERMINAL = { y: -4.8, depth: 3.0, x0: -2, x1: 48, height: 4.4 };
