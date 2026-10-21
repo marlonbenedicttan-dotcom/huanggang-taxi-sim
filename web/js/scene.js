@@ -155,6 +155,8 @@ export class Scene3D {
     this.laneGlow = [];
     this.time = 0;
     this.hour = 9;
+    this.assets = null;
+    this.dprScale = 1;
 
     this._bindControls();
     this.resize();
@@ -259,6 +261,15 @@ export class Scene3D {
   resetCamera() {
     this.orbit = { theta: Math.PI / 2 + 0.09, phi: 0.95, radius: 48 };
     this.autoRotate = false;
+  }
+
+  /** Adaptive resolution: drop the pixel ratio when frames get expensive. */
+  setDprScale(scale) {
+    this.dprScale = Math.max(0.6, Math.min(1, scale));
+    this.renderer.setPixelRatio(
+      Math.min(window.devicePixelRatio || 1, this.maxDpr * this.dprScale)
+    );
+    this.resize();
   }
 
   setQuality(q) {
@@ -398,6 +409,7 @@ export class Scene3D {
     this._buildTerminal();
     this._buildRoad();
     this._buildProps();
+    this._buildAssets();
     this._buildPools();
 
     const t1 = this.label("WAITING AREA", "#51606f", 0.44);
@@ -426,42 +438,29 @@ export class Scene3D {
     });
 
     const doors = [[13.2, 15.0], [16.7, 18.5], [20.2, 22.0]];
-    const segs = [];
-    let x = T.x0;
-    for (const [a, b] of doors) {
-      if (a > x) segs.push([x, a]);
-      x = b;
-    }
-    if (x < T.x1) segs.push([x, T.x1]);
 
-    const parts = [];
-    for (const [a, b] of segs) parts.push({ geo: box(b - a, T.height, T.depth), x: (a + b) / 2, y: T.height / 2, z: T.y });
-    for (const [a, b] of doors) parts.push({ geo: box(b - a, T.height - 2.7, T.depth), x: (a + b) / 2, y: (T.height + 2.7) / 2, z: T.y });
-    this.root.add(new THREE.Mesh(merge(parts), concrete));
-
+    // glass doors sit on the face of the kit buildings
     for (const [a, b] of doors) {
-      const d = new THREE.Mesh(new THREE.PlaneGeometry(b - a, 2.7), glass);
-      d.position.set((a + b) / 2, 1.35, T.y + T.depth / 2 + 0.02);
+      const d = new THREE.Mesh(new THREE.PlaneGeometry(b - a, 2.6), glass);
+      d.position.set((a + b) / 2, 1.3, T.y + T.depth / 2 + 2.6);
       this.root.add(d);
     }
-    const strip = new THREE.Mesh(new THREE.PlaneGeometry(T.x1 - T.x0 - 2, 1.15), this.windowMat);
-    strip.position.set((T.x0 + T.x1) / 2, 3.35, T.y + T.depth / 2 + 0.02);
-    this.root.add(strip);
 
-    const sign = this.label("HUANGGANG PORT  ·  皇岗口岸", "#33404f", 0.72);
-    sign.position.set(17.6, 5.0, T.y + T.depth / 2 + 0.25);
+    // entrance canopy over the doors
+    const canopy = new THREE.Mesh(
+      box(11, 0.16, 2.6),
+      new THREE.MeshStandardMaterial({ color: 0x2f8f7a, roughness: 0.8 })
+    );
+    canopy.position.set(17.6, 3.1, T.y + T.depth / 2 + 4.2);
+    this.root.add(canopy);
+
+    const sign = this.label("HUANGGANG PORT  ·  皇岗口岸", "#2f3a47", 0.78);
+    sign.position.set(17.6, 4.3, T.y + T.depth / 2 + 4.4);
     this.root.add(sign);
 
-    const roof = new THREE.Mesh(
-      box(T.x1 - T.x0, 0.26, T.depth + 1.1),
-      new THREE.MeshStandardMaterial({ color: 0x2f8f7a, roughness: 0.85 })
-    );
-    roof.position.set((T.x0 + T.x1) / 2, T.height + 0.13, T.y);
-    this.root.add(roof);
-
     // kerb in front of the terminal
-    const kerb = new THREE.Mesh(box(T.x1 - T.x0, 0.16, 0.5), new THREE.MeshStandardMaterial({ color: 0xb9c3cd, roughness: 0.9 }));
-    kerb.position.set((T.x0 + T.x1) / 2, 0.08, T.y + T.depth / 2 + 0.9);
+    const kerb = new THREE.Mesh(box(48, 0.16, 0.5), new THREE.MeshStandardMaterial({ color: 0xb9c3cd, roughness: 0.9 }));
+    kerb.position.set(21, 0.08, T.y + T.depth / 2 + 3.2);
     this.root.add(kerb);
 
     const taxiSign = this.label("TAXI  的士", "#33404f", 0.6);
@@ -609,6 +608,57 @@ export class Scene3D {
         sprite.position.set(px, 2.66, py);
         this.root.add(sprite);
       }
+    }
+  }
+
+  /** Place one baked model (already normalised: y=0 base, centred on x/z). */
+  addModel(parts, x, z, rotY = 0, scale = 1, y = 0, stretch = null, tint = null) {
+    if (!parts) return null;
+    const g = new THREE.Group();
+    for (const p of parts) {
+      let mat = p.material;
+      if (tint) {
+        mat = mat.clone();
+        mat.color = mat.color.clone().multiply(new THREE.Color(tint));
+      }
+      g.add(new THREE.Mesh(p.geometry, mat));
+    }
+    g.position.set(x, y, z);
+    g.rotation.y = rotY;
+    if (stretch) g.scale.set(scale * stretch[0], scale, scale * stretch[1]);
+    else g.scale.setScalar(scale);
+    this.root.add(g);
+    return g;
+  }
+
+  /** City backdrop, trees and planters from the CC0 kits. */
+  _buildAssets() {
+    const A = this.assets;
+    if (!A) return;
+    const low = this.quality === "low";
+
+    // the terminal itself: a run of kit buildings forming the facade
+    const blocks = low ? [4, 20, 36] : [1, 10.5, 20, 29.5, 39];
+    blocks.forEach((x, i) => {
+      const b = A.buildings[i % A.buildings.length];
+      this.addModel(b, x, -7.6 - (i % 2) * 1.2, 0, 1.0, 0, [2.1, 1.3], 0xffe4c2);
+    });
+
+    if (low) return;
+
+    // trees along both edges and behind the building
+    const treeSpots = [
+      [-9, 12, 1.5], [-9, 20, 1.2], [-9, 28, 1.6],
+      [57, 12, 1.4], [57, 22, 1.5], [57, 30, 1.2],
+      [6, -14, 1.7], [30, -14, 1.5], [46, -14, 1.6],
+    ];
+    for (const [x, z, sc] of treeSpots) {
+      this.addModel(A.trees[(x + z) % A.trees.length], x, z, (x + z) * 0.7, sc);
+    }
+
+    // planters along the terminal kerb
+    for (let x = 2; x <= 44; x += 6.5) {
+      this.addModel(A.bushes[(x | 0) % A.bushes.length], x, TERMINAL.y + TERMINAL.depth / 2 + 2.2, 0, 1.6);
     }
   }
 

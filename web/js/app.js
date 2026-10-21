@@ -7,6 +7,7 @@
 
 import { runSimulation, DEFAULTS, SMART } from "./sim.js";
 import { Scene3D } from "./scene.js";
+import { prepare } from "./assets.js";
 import { CSS_COLOR, CLS_LABEL } from "./layout.js";
 
 const $ = (sel) => document.querySelector(sel);
@@ -498,6 +499,19 @@ function drawPlayhead() {
  * Playback loop
  * ------------------------------------------------------------------ */
 let last = performance.now();
+let frameCount = 0;
+let frameAcc = 0;
+const FPS_METER = new URLSearchParams(location.search).get("fps") === "1";
+const fpsEl = (() => {
+  if (!FPS_METER) return { textContent: "" };
+  const el = document.createElement("div");
+  el.id = "fpsMeter";
+  el.style.cssText =
+    "position:fixed;right:10px;bottom:10px;z-index:99;background:#000;color:#7dffb0;" +
+    "font:11px ui-monospace,monospace;padding:4px 8px;border-radius:6px;opacity:.85";
+  document.body.appendChild(el);
+  return el;
+})();
 
 /* Automated screenshots (and low-power devices) can ask the page to render a
    fixed number of frames and then stop: ?still=90 */
@@ -554,6 +568,22 @@ function loop(now) {
   const hour = (state.meta ? state.meta.startHour : 8) + state.playT / 60;
   scene.tick(dt, hour);
   scene.render(dt);
+
+  // --- frame budget guard: keep it smooth rather than pretty -------------
+  frameCount++;
+  frameAcc += dt;
+  if (frameAcc >= 1.0) {
+    const fps = frameCount / frameAcc;
+    if (FPS_METER) {
+      const info = scene.renderer.info.render;
+      fpsEl.textContent =
+        `${fps.toFixed(0)} fps · ${info.calls} calls · ${(info.triangles / 1000).toFixed(0)}k tris`;
+    }
+    if (fps < 50 && scene.dprScale > 0.62) scene.setDprScale(scene.dprScale * 0.85);
+    else if (fps > 58 && scene.dprScale < 1) scene.setDprScale(scene.dprScale * 1.05);
+    frameCount = 0;
+    frameAcc = 0;
+  }
 
   if (state.compare && state.runA) {
     const sb = ensureSceneB();
@@ -852,6 +882,31 @@ function setCompare(on) {
 
 
 /* ================================================================== *
+ * CC0 kit assets (Kenney city / car / nature)
+ * ================================================================== */
+async function loadKitAssets() {
+  try {
+    const base = "./models/";
+    const [b1, b2, b3, tree, bush] = await Promise.all([
+      prepare(base + "building-l.glb", { targetHeight: 5.2 }),
+      prepare(base + "building-e.glb", { targetHeight: 3.4 }),
+      prepare(base + "building-a.glb", { targetHeight: 4.4 }),
+      prepare(base + "tree_cone.glb", { targetHeight: 1.9 }),
+      prepare(base + "plant_bush.glb", { targetHeight: 0.55 }),
+    ]);
+    scene.assets = { buildings: [b1, b2, b3], trees: [tree], bushes: [bush] };
+    // rebuild the static world with the models in place
+    if (state.meta) {
+      scene.setScene(state.meta);
+      scene.attachLabels($("#zoneLabels"));
+      bKey = null;
+    }
+  } catch (err) {
+    console.warn("model assets unavailable, keeping the procedural world", err);
+  }
+}
+
+/* ================================================================== *
  * Guided tour + shareable links
  * ================================================================== */
 
@@ -1103,6 +1158,9 @@ function init() {
     state.playing = false;
   }
   if (q.get("play") === "0") state.playing = false;
+
+  // Kits load after the first paint so startup is never blocked by the network.
+  loadKitAssets();
 
   // handle for tests, screenshots and video recording
   window.__sim = {
