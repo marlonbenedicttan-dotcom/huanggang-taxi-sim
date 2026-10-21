@@ -117,6 +117,11 @@ for N replications and refuses to claim an effect when the 95% intervals overlap
   "did anything change?".
 * **Trials** — 1 / 10 / 30 replications, with a verdict that says
   "−55%, CIs do not overlap" or "no measurable difference".
+* **Editable in one minute** — only four headline inputs and the six policy
+  cards are shown; everything else is behind *More settings*. Sliders apply
+  automatically (a run takes ~30 ms), so there is no Run button to forget.
+* **Shareable** — *copy link* encodes the whole scenario in the URL, and a
+  3-step tour runs on the first visit.
 * On a phone the split becomes an **A/B swap** (one scene at a time, `Show A`
   button) because two live 3D scenes would waste memory on a phone.
 

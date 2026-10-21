@@ -16,50 +16,72 @@ const $ = (sel) => document.querySelector(sel);
  * ------------------------------------------------------------------ */
 const GROUPS = [
   {
-    name: "Demand",
+    name: "The essentials",
     items: [
-      { key: "paxPerHour", label: "Passengers", min: 300, max: 850, step: 10, unit: "pax/h" },
-      { key: "urbanShare", label: "Urban / NT split", min: 0.5, max: 0.95, step: 0.05, pct: true },
-      { key: "prebookShare", label: "Pre-booked share", min: 0, max: 0.35, step: 0.05, pct: true },
+      { key: "paxPerHour", label: "Passengers arriving", min: 300, max: 850, step: 10, unit: "pax/h",
+        hint: "Walk-up passengers per hour, averaged over the shift. Count arrivals at the taxi hall for 2-3 days." },
+      { key: "taxiSupplyRatioUrban", label: "Urban taxis arriving", min: 0.7, max: 1.4, step: 0.05, unit: "× demand",
+        hint: "Empty urban taxis entering the buffer, relative to passenger demand. 1.0 means supply matches demand on average." },
+      { key: "taxiSupplyRatioNt", label: "NT taxis arriving", min: 0.7, max: 1.4, step: 0.05, unit: "× demand",
+        hint: "Same for New Territories taxis. Below 1.0 the NT lane is structurally short of taxis." },
+      { key: "stands.urban", label: "Urban pickup bays", min: 3, max: 14, step: 1, int: true,
+        hint: "Physical bays serving the urban queue. Each bay boards roughly one taxi every 1.5 minutes." },
     ],
   },
   {
-    name: "Taxi supply",
+    name: "Demand mix",
     items: [
-      { key: "taxiSupplyRatioUrban", label: "Urban taxis", min: 0.7, max: 1.4, step: 0.05, unit: "× demand" },
-      { key: "taxiSupplyRatioNt", label: "NT taxis", min: 0.7, max: 1.4, step: 0.05, unit: "× demand" },
-      { key: "flexShare", label: "Flexible taxis", min: 0, max: 0.6, step: 0.05, pct: true },
+      { key: "urbanShare", label: "Urban vs NT split", min: 0.5, max: 0.95, step: 0.05, pct: true,
+        hint: "Share of walk-up passengers heading to urban destinations. The rest join the NT queue." },
+      { key: "prebookShare", label: "Booked in advance", min: 0, max: 0.35, step: 0.05, pct: true,
+        hint: "Share using fleet / pre-booked taxis instead of the walk-up hall." },
+    ],
+  },
+  {
+    name: "Taxi mix",
+    items: [
+      { key: "flexShare", label: "Taxis taking either queue", min: 0, max: 0.6, step: 0.05, pct: true,
+        hint: "Share of taxis allowed to serve either destination. A regulation question, not a software one." },
     ],
   },
   {
     name: "Pickup hall",
     items: [
-      { key: "stands.urban", label: "Urban bays", min: 3, max: 14, step: 1, int: true },
-      { key: "stands.nt", label: "NT bays", min: 1, max: 8, step: 1, int: true },
-      { key: "service", label: "Boarding time", min: 0.8, max: 3.5, step: 0.1, unit: "min" },
-      { key: "bufferCapacity", label: "Buffer spaces / lane", min: 10, max: 60, step: 5, int: true },
+      { key: "stands.nt", label: "NT pickup bays", min: 1, max: 8, step: 1, int: true,
+        hint: "Bays serving the New Territories queue." },
+      { key: "service", label: "Boarding time per taxi", min: 0.8, max: 3.5, step: 0.1, unit: "min",
+        hint: "Registration, luggage and payment. Stopwatch ~50 boardings; app pre-registration shortens it by 25%." },
+      { key: "bufferCapacity", label: "Waiting spaces per lane", min: 10, max: 60, step: 5, int: true,
+        hint: "How many empty taxis each lane can hold. When full, taxis circle and come back later." },
+      { key: "dispatchBatch", label: "Taxis per release", min: 2, max: 14, step: 1, int: true,
+        hint: "Taxis waved forward each time staff release a platoon." },
     ],
   },
   {
-    name: "Dispatch policy",
+    name: "Staffing and behaviour",
     items: [
-      { key: "dispatchIntervalMin", label: "Dispatch cycle", min: 0, max: 5, step: 0.25, unit: "min", zeroLabel: "continuous" },
-      { key: "dispatchBatch", label: "Taxis per dispatch", min: 2, max: 14, step: 1, int: true },
-      { key: "misrouteProb", label: "Wrong-lane rate", min: 0, max: 0.2, step: 0.01, pct: true },
-      { key: "appShare", label: "App pre-registration", min: 0, max: 1, step: 0.05, pct: true },
-      { key: "pooledStands", label: "Pool urban + NT bays", type: "toggle" },
-    ],
-  },
-  {
-    name: "Passengers",
-    items: [
-      { key: "patienceMeanMin", label: "Tolerance before leaving", min: 10, max: 80, step: 5, unit: "min" },
+      { key: "dispatchIntervalMin", label: "How often staff release taxis", min: 0, max: 5, step: 0.25, unit: "min",
+        zeroLabel: "continuous", hint: "The manual dispatch cycle. Zero means taxis are released the moment they arrive." },
+      { key: "misrouteProb", label: "Taxis sent to the wrong queue", min: 0, max: 0.2, step: 0.01, pct: true,
+        hint: "Share of taxis that take the wrong lane and must circle back." },
+      { key: "appShare", label: "Passengers pre-registered", min: 0, max: 1, step: 0.05, pct: true,
+        hint: "Share whose details are already in the system, which shortens boarding." },
+      { key: "patienceMeanMin", label: "How long people wait before leaving", min: 10, max: 80, step: 5, unit: "min",
+        hint: "Average tolerance before a passenger gives up and leaves the queue." },
     ],
   },
   {
     name: "Display",
-    items: [{ key: "highQuality", label: "High-quality graphics", type: "toggle" }],
+    items: [{ key: "highQuality", label: "High-quality graphics", type: "toggle",
+        hint: "Turn off on older laptops or to save battery." }],
   },
+];
+
+/* Settings that describe the *process* rather than demand: the reference run
+   resets these so the KPI deltas answer "what did the policies change?". */
+const POLICY_KEYS = [
+  "dispatchIntervalMin", "dispatchBatch", "pooledStands", "appShare",
+  "flexShare", "misrouteProb", "stands.urban", "stands.nt", "taxiSupplyRatioNt",
 ];
 
 const IS_PHONE =
@@ -109,6 +131,24 @@ const state = {
 
 const scene = new Scene3D($("#scene"));
 
+/* Auto-apply: a run costs 25-50 ms, so waiting for a button is friction.
+   Debounced so dragging a slider does not queue dozens of runs. */
+let runTimer = null;
+function scheduleRun(delay = 220) {
+  clearTimeout(runTimer);
+  runTimer = setTimeout(run, delay);
+}
+
+/** Current values with every *policy* reset to the current process, so the
+ *  KPI deltas answer "what did the policies change?" at the same demand. */
+function referenceValues() {
+  const v = { ...state.values };
+  for (const k of POLICY_KEYS) {
+    if (PRESETS.baseline[k] !== undefined) v[k] = PRESETS.baseline[k];
+  }
+  return v;
+}
+
 /* ------------------------------------------------------------------ *
  * Controls
  * ------------------------------------------------------------------ */
@@ -126,13 +166,38 @@ function fmt(item, v) {
 function buildControls() {
   const host = $("#controls");
   host.innerHTML = "";
+  let advanced = null;
+  let index = 0;
   for (const group of GROUPS) {
     const section = document.createElement("section");
     section.className = "group";
+    // everything after the first group is folded away by default
+    if (index === 1 && !advanced) {
+      const toggle = document.createElement("button");
+      toggle.type = "button";
+      toggle.id = "advancedToggle";
+      const paint = (open) => {
+        toggle.classList.toggle("open", open);
+        toggle.innerHTML = `<span class="chev">›</span> ${open ? "Fewer settings" : "More settings"}`;
+      };
+      paint(false);
+      advanced = document.createElement("div");
+      advanced.id = "advanced";
+      advanced.hidden = true;
+      toggle.addEventListener("click", () => {
+        paint(advanced.hidden);
+        advanced.hidden = !advanced.hidden;
+      });
+      host.appendChild(toggle);
+      host.appendChild(advanced);
+    }
+    index++;
+
     section.innerHTML = `<h2>${group.name}</h2>`;
     for (const item of group.items) {
       const row = document.createElement("div");
       row.className = "row";
+      if (item.hint) row.title = item.hint;
       if (item.type === "toggle") {
         row.innerHTML = `
           <label for="c-${item.key}">${item.label}</label>
@@ -168,10 +233,11 @@ function buildControls() {
         state.values[item.key] = Number(input.value);
         out.textContent = fmt(item, Number(input.value));
         setPreset(null);
+        scheduleRun();
       });
       section.appendChild(row);
     }
-    host.appendChild(section);
+    (advanced || host).appendChild(section);
   }
 }
 
@@ -251,6 +317,7 @@ function run() {
   const t0 = performance.now();
   const res = runSimulation(cfg, state.seed);
   const ms = performance.now() - t0;
+  state.baseline = runSimulation(buildConfig(referenceValues()), state.seed).metrics;
 
   state.frames = res.frames;
   state.meta = res.meta;
@@ -273,10 +340,10 @@ function run() {
   $("#playBtn").textContent = "Pause";
 }
 
-/* Compute the baseline reference once so deltas are available on first load. */
+/* The reference is re-run with every change, so the deltas always compare
+   like with like (same demand, same infrastructure, policy reset). */
 function computeBaseline() {
-  const cfg = { ...DEFAULTS, anim: { from: 0, to: 60, step: 60 } };
-  state.baseline = runSimulation(cfg, 1).metrics;
+  state.baseline = runSimulation(buildConfig(referenceValues()), state.seed).metrics;
 }
 
 /* ------------------------------------------------------------------ *
@@ -648,7 +715,7 @@ function ensureSceneB() {
 
 function ensureRunA() {
   if (state.runA && state.runA.key === String(state.window)) return;
-  const res = runSimulation(buildConfig(baselineValues()), state.seed);
+  const res = runSimulation(buildConfig(referenceValues()), state.seed);
   state.runA = { ...res, key: String(state.window) };
   bKey = null;
 }
@@ -663,7 +730,7 @@ function ci95(vals) {
 
 function updateVerdict() {
   const trials = Number($("#trialsSel").value) || 1;
-  const aCfg = buildConfig(baselineValues());
+  const aCfg = buildConfig(referenceValues());
   const bCfg = buildConfig();
   const A = [];
   const B = [];
@@ -711,7 +778,7 @@ function updateVerdict() {
   ].join("");
 
   // what actually differs between A and B
-  const base = baselineValues();
+  const base = referenceValues();
   const diffs = [];
   for (const [key, label, fmt] of DIFF_KEYS) {
     const av = base[key] !== undefined ? base[key] : DEFAULTS[key];
@@ -766,6 +833,96 @@ function setCompare(on) {
   $("#cmpBtn").textContent = on ? "Comparing" : "Compare";
 }
 
+
+/* ================================================================== *
+ * Guided tour + shareable links
+ * ================================================================== */
+
+const TOUR = [
+  {
+    title: "This is the taxi hall",
+    text:
+      "Empty taxis queue in the buffer on the left, passengers wait in three lanes, " +
+      "and the pickup bays are at the far end. Drag to orbit, pinch or scroll to zoom.",
+    target: "#stage",
+  },
+  {
+    title: "Switch on a policy",
+    text:
+      "Each card is one measure a port could adopt. The number on the right is its " +
+      "effect on mean wait when applied on its own — so you can see which idea matters.",
+    target: "#policyCards",
+  },
+  {
+    title: "Prove something changed",
+    text:
+      "Compare runs the current process (A) and your proposal (B) on the same seed, " +
+      "then checks whether the confidence intervals overlap before claiming an effect.",
+    target: "#cmpBtn",
+  },
+];
+
+let tourIndex = 0;
+
+function paintTour() {
+  const step = TOUR[tourIndex];
+  $("#tourStep").textContent = `${tourIndex + 1} / ${TOUR.length}`;
+  $("#tourTitle").textContent = step.title;
+  $("#tourText").textContent = step.text;
+  $("#tourNext").textContent = tourIndex === TOUR.length - 1 ? "Got it" : "Next";
+  document.querySelectorAll(".tour-highlight").forEach((el) => el.classList.remove("tour-highlight"));
+  const target = document.querySelector(step.target);
+  if (target) {
+    target.classList.add("tour-highlight");
+    if (target.scrollIntoView) target.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }
+}
+
+function startTour() {
+  tourIndex = 0;
+  $("#tour").hidden = false;
+  paintTour();
+}
+
+function endTour() {
+  $("#tour").hidden = true;
+  document.querySelectorAll(".tour-highlight").forEach((el) => el.classList.remove("tour-highlight"));
+  try { localStorage.setItem("hg_tour_done", "1"); } catch {}
+}
+
+function encodeScenario() {
+  const payload = { v: state.values, w: state.window, seed: state.seed };
+  return btoa(unescape(encodeURIComponent(JSON.stringify(payload))));
+}
+
+async function copyLink() {
+  const url = `${location.origin}${location.pathname}?s=${encodeScenario()}`;
+  const btn = $("#shareBtn");
+  try {
+    await navigator.clipboard.writeText(url);
+    btn.textContent = "copied!";
+  } catch {
+    window.prompt("Copy this link", url);
+    btn.textContent = "link ready";
+  }
+  setTimeout(() => (btn.textContent = "copy link"), 1600);
+}
+
+function loadSharedLink(param) {
+  try {
+    const data = JSON.parse(decodeURIComponent(escape(atob(param))));
+    if (data.v) state.values = { ...PRESETS.baseline, ...data.v };
+    if (data.w != null) state.window = Number(data.w);
+    if (data.seed) state.seed = Number(data.seed);
+    const seedOut = $("#seedOut");
+    if (seedOut) seedOut.textContent = String(state.seed);
+    syncControls();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function init() {
   buildControls();
   syncControls();
@@ -799,6 +956,20 @@ function init() {
 
   renderCards();
   setTimeout(computeEffects, 500);
+
+  $("#tourNext").addEventListener("click", () => {
+    if (tourIndex >= TOUR.length - 1) endTour();
+    else { tourIndex++; paintTour(); }
+  });
+  $("#tourSkip").addEventListener("click", endTour);
+  $("#shareBtn").addEventListener("click", copyLink);
+
+  let seenTour = false;
+  try { seenTour = localStorage.getItem("hg_tour_done") === "1"; } catch {}
+  const qq = new URLSearchParams(location.search);
+  if (qq.get("tour") === "1" || (!seenTour && qq.get("compare") !== "1" && !qq.get("s"))) {
+    setTimeout(startTour, 400);
+  }
 
   $("#cmpBtn").addEventListener("click", () => setCompare(!state.compare));
   $("#cmpClose").addEventListener("click", () => setCompare(false));
@@ -866,6 +1037,7 @@ function init() {
     syncControls();
   }
   if (q.get("window")) state.window = Number(q.get("window"));
+  if (q.get("s")) loadSharedLink(q.get("s"));
 
   run();
   if (q.get("compare") === "1") setCompare(true);

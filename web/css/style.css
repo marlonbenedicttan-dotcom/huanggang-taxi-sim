@@ -651,3 +651,77 @@ button.ghost.wide { width: auto; padding: 0 12px; font-size: 12.5px; }
   #stage.split { grid-template-columns: 1fr; }
   body:not(.sheet-open) .cards { display: none; }
 }
+
+
+/* --------------------------- advanced disclosure -------------------------- */
+#advancedToggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  margin: 2px 0 8px;
+  padding: 7px 9px;
+  background: transparent;
+  border: 1px dashed #2b3d59;
+  border-radius: 9px;
+  color: #9db2cc;
+  font: 12px/1 inherit;
+  cursor: pointer;
+}
+#advancedToggle:hover { border-color: #3d5a80; }
+#advancedToggle .chev { transition: transform 0.18s; }
+#advancedToggle.open .chev { transform: rotate(90deg); }
+
+.linklike {
+  background: none;
+  border: 0;
+  color: #6f8fb5;
+  font: 10.5px ui-monospace, SFMono-Regular, Menlo, monospace;
+  cursor: pointer;
+  padding: 0 0 0 6px;
+  text-decoration: underline dotted;
+}
+.linklike:hover { color: #9fc4ea; }
+
+/* -------------------------------- tour ---------------------------------- */
+#tour {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(5, 9, 15, 0.55);
+  backdrop-filter: blur(2px);
+}
+.tour-card {
+  width: min(360px, calc(100vw - 40px));
+  background: #131c2b;
+  border: 1px solid #2c405e;
+  border-radius: 14px;
+  padding: 16px 18px 14px;
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.6);
+}
+.tour-step {
+  font: 10.5px ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: #7f9ab8;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.tour-card h3 { margin: 4px 0 6px; font-size: 15px; }
+.tour-card p { margin: 0 0 14px; font-size: 12.5px; color: #b6c7dc; line-height: 1.5; }
+.tour-actions { display: flex; justify-content: flex-end; gap: 8px; }
+button.primary.small { flex: 0 0 auto; padding: 7px 14px; font-size: 12.5px; }
+
+.tour-highlight {
+  outline: 2px solid #4aa3e0 !important;
+  outline-offset: 2px;
+  border-radius: 12px;
+  animation: tourPulse 1.6s ease-in-out infinite;
+}
+@keyframes tourPulse {
+  0%, 100% { outline-color: rgba(74, 163, 224, 0.95); }
+  50% { outline-color: rgba(74, 163, 224, 0.35); }
+}
+
+#advanced[hidden] { display: none; }
