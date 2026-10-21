@@ -115,3 +115,33 @@ export async function prepare(url, opts) {
   const gltf = await loadGLB(url);
   return normalise(bake(gltf), opts);
 }
+
+
+/**
+ * Clone a baked model with its texture hue-rotated.
+ * Lets one yellow kit taxi become the red / green / blue Hong Kong classes
+ * without downloading two more models.
+ */
+export function recolor(parts, degrees) {
+  return parts.map((p) => {
+    const material = p.material.clone();
+    const map = material.map;
+    if (map && map.image) {
+      const img = map.image;
+      const canvas = document.createElement("canvas");
+      canvas.width = img.width;
+      canvas.height = img.height;
+      const g = canvas.getContext("2d");
+      g.filter = `hue-rotate(${degrees}deg)`;
+      g.drawImage(img, 0, 0);
+      const tex = new THREE.CanvasTexture(canvas);
+      tex.colorSpace = THREE.SRGBColorSpace;
+      tex.magFilter = THREE.NearestFilter;
+      tex.minFilter = THREE.LinearMipmapLinearFilter;
+      material.map = tex;
+    } else {
+      material.color.offsetHSL(degrees / 360, 0, 0);
+    }
+    return { geometry: p.geometry, material };
+  });
+}

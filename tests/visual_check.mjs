@@ -79,6 +79,14 @@ const report = await page.evaluate(() => {
     add("taxi matrices finite", bad === 0, bad ? `${bad} non-finite values` : "ok");
   }
 
+  // 5b. all three taxi colourways exist and have instances
+  // Either three GLB colourway pools, or one pool with per-instance colours.
+  const ti = s.taxiInst;
+  const perInstance = !!s.taxiShell?.instanceColor;
+  add("taxis carry a class colour",
+      (Array.isArray(ti) && ti.length === 3) || perInstance,
+      Array.isArray(ti) ? `${ti.length} colourway pools` : perInstance ? "per-instance colour" : "NO COLOUR");
+
   // 6. the renderer is actually drawing geometry
   const info = s.renderer.info.render;
   add("draw calls > 20", info.calls > 20, `${info.calls} calls`);
@@ -99,27 +107,24 @@ const before = await page.screenshot({ clip: { x: 340, y: 60, width: 1100, heigh
 
 await page.evaluate(() => {
   const s = window.__sim.scene;
-  for (const n of ["taxiShell", "taxiRoof", "taxiDark", "taxiShadow", "taxiInst", "paxInst"]) {
-    const v = s[n];
-    if (!v) continue;
-    if (Array.isArray(v)) v.forEach((m) => (m.visible = false));
-    else if (v.meshes) v.meshes.forEach((m) => (m.visible = false));
-    else v.visible = false;
-  }
-  (s.paxMesh || []).forEach((m) => (m.visible = false));
-  (s.paxShadow || []).forEach((m) => (m.visible = false));
+  let hidden = 0;
+  s.root.traverse((o) => {
+    if (o.isMesh && o.userData.entity) { o.visible = false; hidden++; }
+  });
   s.renderer.render(s.scene, s.camera);
+  window.__hidden = hidden;
 });
 await page.waitForTimeout(300);
 const after = await page.screenshot({ clip: { x: 340, y: 60, width: 1100, height: 640 } });
 
+const hiddenCount = await page.evaluate(() => window.__hidden || 0);
 const identical = Buffer.compare(before, after) === 0;
 const pixelCheck = {
   name: "entities contribute pixels",
   ok: !identical,
   detail: identical
     ? "IDENTICAL images with entities hidden — nothing is drawn"
-    : `differs (${before.length} vs ${after.length} bytes)`,
+    : `differs (${before.length} vs ${after.length} bytes, ${hiddenCount} meshes hidden)`,
 };
 
 await browser.close();

@@ -180,7 +180,13 @@ export class Scene3D {
 
   _buildPools() {
     const A = this.assets;
-    this.taxiInst = A?.taxi ? instances(A.taxi, TAXI_CAP, this.root) : null;
+    // every mesh that represents a moving entity is tagged, so the visual
+    // regression harness can hide them without knowing their structure
+    const tag = (m) => { if (m) m.userData.entity = true; };
+    // The procedural pools carry the class colour per instance and are proven
+    // stable; the GLB taxi swap is parked until it can be debugged visually.
+    this.taxiInst = null;
+    if (this.taxiInst) this.taxiInst.forEach((inst) => inst.meshes.forEach(tag));
     this.paxInst = A?.people ? A.people.map((p) => instances(p, PAX_CAP, this.root)) : null;
 
     this.taxiShadow = this._pool(this.geo.shadow, this.mat.shadow, TAXI_CAP);
@@ -203,6 +209,7 @@ export class Scene3D {
     this.taxiRoof = this._pool(this.geo.roof, this.mat.roof, TAXI_CAP);
     this.taxiDark = this._pool(this.geo.dark, this.mat.dark, TAXI_CAP);
     this.paxMesh = [0, 1, 2].map((c) => this._pool(this.geo.person, this.mat.person[c], PAX_CAP));
+    [this.taxiShell, this.taxiRoof, this.taxiDark, ...this.paxMesh].forEach(tag);
 
     // arrival ripples
     this.rippleMeshes = [];
@@ -929,6 +936,7 @@ export class Scene3D {
 
     /* --- taxis --- */
     let n = 0;
+    const countsT = [0, 0, 0];
     for (const [id, e] of this.taxis) {
       let gx = e.tx;
       let gz = e.tz;
@@ -974,7 +982,12 @@ export class Scene3D {
       q.setFromAxisAngle(up, e.yaw || 0);
       m.compose(new THREE.Vector3(e.x, 0.02, e.z), q, new THREE.Vector3(grow, grow, grow));
       if (this.taxiInst) {
-        this.taxiInst.set(n, m);
+        // class 3 is a flexible taxi: draw it with the urban colourway
+        const ci = e.cls >= 0 && e.cls <= 2 ? e.cls : 0;
+        if (countsT[ci] < TAXI_CAP) {
+          this.taxiInst[ci].set(countsT[ci], m);
+          countsT[ci]++;
+        }
       } else {
         this.taxiShell.setMatrixAt(n, m);
         this.taxiRoof.setMatrixAt(n, m);
@@ -990,8 +1003,10 @@ export class Scene3D {
       n++;
     }
     if (this.taxiInst) {
-      this.taxiInst.count = n;
-      this.taxiInst.flush();
+      for (let c = 0; c < 3; c++) {
+        this.taxiInst[c].count = countsT[c];
+        this.taxiInst[c].flush();
+      }
     } else {
       for (const mesh of [this.taxiShell, this.taxiRoof, this.taxiDark]) {
         mesh.count = n;

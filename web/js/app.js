@@ -887,21 +887,20 @@ function setCompare(on) {
 async function loadKitAssets() {
   try {
     const base = "./models/";
-    const [b1, b2, b3, tree, bush, taxi, pa, pb, pc] = await Promise.all([
+    const [b1, b2, b3, tree, bush] = await Promise.all([
       prepare(base + "city/building-l.glb", { targetHeight: 5.2 }),
       prepare(base + "city/building-e.glb", { targetHeight: 3.4 }),
       prepare(base + "city/building-a.glb", { targetHeight: 4.4 }),
       prepare(base + "nature/tree_cone.glb", { targetHeight: 1.9 }),
       prepare(base + "nature/plant_bush.glb", { targetHeight: 0.55 }),
-      prepare(base + "car/taxi.glb", { targetLength: 1.2, rotateY: -Math.PI / 2 }),
-      prepare(base + "chars/character-a.glb", { targetHeight: 0.62 }),
-      prepare(base + "chars/character-b.glb", { targetHeight: 0.62 }),
-      prepare(base + "chars/character-c.glb", { targetHeight: 0.62 }),
     ]);
+
     scene.assets = {
-      buildings: [b1, b2, b3], trees: [tree], bushes: [bush],
-      taxi: taxi, people: [pa, pb, pc],
+      buildings: [b1, b2, b3],
+      trees: [tree],
+      bushes: [bush],
     };
+
     // rebuild the static world with the models in place
     if (state.meta) {
       scene.setScene(state.meta);
