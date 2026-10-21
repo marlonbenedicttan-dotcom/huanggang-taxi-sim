@@ -116,8 +116,8 @@ export class Scene3D {
     this.clouds = [];
 
     this.camera = new THREE.PerspectiveCamera(40, 1, 0.1, 400);
-    this.target = new THREE.Vector3(22, 1.2, 11);
-    this.orbit = { theta: Math.PI / 2 + 0.09, phi: 0.95, radius: 48 };
+    this.target = new THREE.Vector3(23, 1.0, 9.5);
+    this.orbit = { theta: Math.PI / 2 + 0.09, phi: 0.9, radius: 60 };
     this.autoRotate = false;
 
     this.hemi = new THREE.HemisphereLight(0xffffff, 0xa9b8b0, 1.05);
@@ -183,7 +183,9 @@ export class Scene3D {
 
   _buildPools() {
     const A = this.assets;
-    this.taxiInst = A?.taxi ? instances(A.taxi, TAXI_CAP, this.root) : null;
+    this.taxiInst = A?.taxi
+      ? (Array.isArray(A.taxi) ? A.taxi : [A.taxi]).map((parts) => instances(parts, TAXI_CAP, this.root))
+      : null;
     this.paxInst = A?.people ? A.people.map((p) => instances(p, PAX_CAP, this.root)) : null;
 
     this.taxiShadow = this._pool(this.geo.shadow, this.mat.shadow, TAXI_CAP);
@@ -282,7 +284,7 @@ export class Scene3D {
   }
 
   resetCamera() {
-    this.orbit = { theta: Math.PI / 2 + 0.09, phi: 0.95, radius: 48 };
+    this.orbit = { theta: Math.PI / 2 + 0.09, phi: 0.9, radius: 60 };
     this.autoRotate = false;
   }
 
@@ -325,7 +327,7 @@ export class Scene3D {
   }
 
   /* ---------------- text sprite ---------------- */
-  label(text, color = "#c8d4e6", size = 0.6) {
+  label(text, color = "#c8d4e6", size = 0.6, plate = null) {
     const font = "700 54px -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif";
     const probe = document.createElement("canvas").getContext("2d");
     probe.font = font;
@@ -335,6 +337,13 @@ export class Scene3D {
     c.width = w;
     c.height = h;
     const g = c.getContext("2d");
+    if (plate) {
+      g.fillStyle = plate;
+      g.beginPath();
+      if (g.roundRect) g.roundRect(6, 4, w - 12, h - 8, 24);
+      else g.rect(6, 4, w - 12, h - 8);
+      g.fill();
+    }
     g.font = font;
     g.fillStyle = color;
     g.textAlign = "center";
@@ -421,7 +430,7 @@ export class Scene3D {
       // painted edges
       for (const dy of [-2.42, 2.42]) {
         const edge = new THREE.Mesh(
-          new THREE.PlaneGeometry(50, 0.09),
+          new THREE.PlaneGeometry(50, 0.16),
           new THREE.MeshBasicMaterial({
             color: new THREE.Color(CLS_COLOR[id]).lerp(new THREE.Color(0xffffff), 0.05),
             transparent: true,
@@ -432,17 +441,6 @@ export class Scene3D {
         edge.position.set(23, 0.012, y + dy);
         this.root.add(edge);
       }
-
-      // faint class wash over the queueing stretch only
-      const wash = new THREE.Mesh(
-        new THREE.PlaneGeometry(13, 4.6),
-        new THREE.MeshBasicMaterial({
-          color: CLS_COLOR[id], transparent: true, opacity: 0.16, depthWrite: false,
-        })
-      );
-      wash.rotation.x = -Math.PI / 2;
-      wash.position.set(18.5, 0.006, y);
-      this.root.add(wash);
 
       // coloured glow used to mark the bottleneck
       const glow = new THREE.Mesh(
@@ -467,7 +465,7 @@ export class Scene3D {
       for (let idx = 0; idx < slots.length; idx++) {
         const [x, y] = slots[idx];
         const mat = new THREE.MeshStandardMaterial({
-          color: 0xe3e9ee,
+          color: 0xf2f4f6,
           emissive: new THREE.Color(CLS_COLOR[id]),
           emissiveIntensity: 0.06,
           roughness: 0.85,
@@ -564,8 +562,8 @@ export class Scene3D {
     canopy.position.set(17.6, 3.1, T.y + T.depth / 2 + 4.2);
     this.root.add(canopy);
 
-    const sign = this.label("HUANGGANG PORT  ·  皇岗口岸", "#2f3a47", 0.78);
-    sign.position.set(17.6, 4.3, T.y + T.depth / 2 + 4.4);
+    const sign = this.label("HUANGGANG PORT  ·  皇岗口岸", "#f7f2e6", 0.95, "#22303d");
+    sign.position.set(20, 5.9, -3.4);
     this.root.add(sign);
 
     // kerb in front of the terminal
@@ -821,20 +819,23 @@ export class Scene3D {
     if (!A) return;
     const low = this.quality === "low";
 
-    // the terminal itself: a run of kit buildings forming the facade
-    const blocks = low ? [4, 20, 36] : [1, 10.5, 20, 29.5, 39];
+    // the terminal: one contiguous frontage, with a taller entrance bay
+    const blocks = low ? [10, 32] : [7, 20, 33];
     blocks.forEach((x, i) => {
       const b = A.buildings[i % A.buildings.length];
-      this.addModel(b, x, -7.6 - (i % 2) * 1.2, 0, 1.0, 0, [2.1, 1.3], 0xffe4c2);
+      this.addModel(b, x, -8.2, 0, 1.0, 0, [3.4, 1.5], 0xffe4c2);
     });
+
+
 
     if (low) return;
 
     // trees along both edges and behind the building
+    // trees are 1.9 units tall at scale 1; keep them well below the buildings
     const treeSpots = [
-      [-9, 12, 1.5], [-9, 20, 1.2], [-9, 28, 1.6],
-      [57, 12, 1.4], [57, 22, 1.5], [57, 30, 1.2],
-      [6, -14, 1.7], [30, -14, 1.5], [46, -14, 1.6],
+      [-9, 12, 0.85], [-9, 20, 0.7], [-9, 28, 0.9],
+      [57, 12, 0.8], [57, 22, 0.85], [57, 30, 0.7],
+      [6, -14, 0.95], [30, -14, 0.85], [46, -14, 0.9],
     ];
     for (const [x, z, sc] of treeSpots) {
       this.addModel(A.trees[(x + z) % A.trees.length], x, z, (x + z) * 0.7, sc);
@@ -976,6 +977,7 @@ export class Scene3D {
 
     /* --- taxis --- */
     let n = 0;
+    const tn = [0, 0, 0];        // instances written per class livery
     for (const [id, e] of this.taxis) {
       let gx = e.tx;
       let gz = e.tz;
@@ -1018,7 +1020,8 @@ export class Scene3D {
       q.setFromAxisAngle(up, e.yaw || 0);
       m.compose(new THREE.Vector3(e.x, 0.02, e.z), q, new THREE.Vector3(1, 1, 1));
       if (this.taxiInst) {
-        this.taxiInst.set(n, m);
+        const k = Math.max(0, Math.min(this.taxiInst.length - 1, e.cls | 0));
+        this.taxiInst[k].set(tn[k]++, m);
       } else {
         this.taxiShell.setMatrixAt(n, m);
         this.taxiRoof.setMatrixAt(n, m);
@@ -1034,8 +1037,7 @@ export class Scene3D {
       n++;
     }
     if (this.taxiInst) {
-      this.taxiInst.count = n;
-      this.taxiInst.flush();
+      this.taxiInst.forEach((set, i) => { set.count = tn[i]; set.flush(); });
     } else {
       for (const mesh of [this.taxiShell, this.taxiRoof, this.taxiDark]) {
         mesh.count = n;

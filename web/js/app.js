@@ -7,7 +7,7 @@
 
 import { runSimulation, DEFAULTS, SMART } from "./sim.js";
 import { Scene3D } from "./scene.js";
-import { prepare } from "./assets.js";
+import { prepare, recolor } from "./assets.js";
 import { CSS_COLOR, CLS_LABEL, CLS_SHORT } from "./layout.js";
 
 const $ = (sel) => document.querySelector(sel);
@@ -894,16 +894,18 @@ async function loadKitAssets() {
       prepare(base + "nature/tree_cone.glb", { targetHeight: 1.9 }),
       prepare(base + "nature/plant_bush.glb", { targetHeight: 0.55 }),
       prepare(base + "car/taxi.glb", { targetLength: 1.2, rotateY: -Math.PI / 2 }),
-      prepare(base + "chars/character-a.glb", { targetHeight: 0.62 }),
-      prepare(base + "chars/character-b.glb", { targetHeight: 0.62 }),
-      prepare(base + "chars/character-c.glb", { targetHeight: 0.62 }),
+      prepare(base + "chars/character-a.glb", { targetHeight: 0.78 }),
+      prepare(base + "chars/character-b.glb", { targetHeight: 0.78 }),
+      prepare(base + "chars/character-c.glb", { targetHeight: 0.78 }),
     ]);
 
     scene.assets = {
       buildings: [b1, b2, b3],
       trees: [tree],
       bushes: [bush],
-      taxi,
+      // Hong Kong taxis are red (urban), green (New Territories) and blue
+      // (pre-booked); one model, three hue rotations of its texture atlas.
+      taxi: [recolor(taxi, 2), recolor(taxi, 148), recolor(taxi, 214)],
       people: [pa, pb, pc],
     };
 

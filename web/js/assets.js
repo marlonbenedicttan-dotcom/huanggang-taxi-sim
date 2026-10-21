@@ -122,7 +122,7 @@ export async function prepare(url, opts) {
  * Lets one yellow kit taxi become the red / green / blue Hong Kong classes
  * without downloading two more models.
  */
-export function recolor(parts, degrees) {
+export function recolor(parts, hueDeg, { saturation = 0.68, lift = 0.04 } = {}) {
   return parts.map((p) => {
     const material = p.material.clone();
     const map = material.map;
@@ -131,17 +131,52 @@ export function recolor(parts, degrees) {
       const canvas = document.createElement("canvas");
       canvas.width = img.width;
       canvas.height = img.height;
-      const g = canvas.getContext("2d");
-      g.filter = `hue-rotate(${degrees}deg)`;
+      const g = canvas.getContext("2d", { willReadFrequently: true });
       g.drawImage(img, 0, 0);
+      const frame = g.getImageData(0, 0, canvas.width, canvas.height);
+      const d = frame.data;
+      const h = ((hueDeg % 360) + 360) % 360 / 360;
+
+      for (let i = 0; i < d.length; i += 4) {
+        if (d[i + 3] === 0) continue;
+        const r = d[i] / 255, gg = d[i + 1] / 255, b = d[i + 2] / 255;
+        const mx = Math.max(r, gg, b), mn = Math.min(r, gg, b);
+        const sat = mx === 0 ? 0 : (mx - mn) / mx;
+        // whites, greys and tinted glass keep their value; only paint is recoloured
+        if (sat < 0.2) continue;
+        const lum = (mx + mn) / 2;
+        const [rr, g2, b2] = hslToRgb(h, Math.max(sat, saturation), Math.min(0.72, lum + lift));
+        d[i] = rr * 255;
+        d[i + 1] = g2 * 255;
+        d[i + 2] = b2 * 255;
+      }
+
+      g.putImageData(frame, 0, 0);
       const tex = new THREE.CanvasTexture(canvas);
       tex.colorSpace = THREE.SRGBColorSpace;
       tex.magFilter = THREE.NearestFilter;
       tex.minFilter = THREE.LinearMipmapLinearFilter;
+      tex.anisotropy = 4;
       material.map = tex;
+      material.needsUpdate = true;
     } else {
-      material.color.offsetHSL(degrees / 360, 0, 0);
+      material.color.offsetHSL(hueDeg / 360, 0, 0);
     }
     return { geometry: p.geometry, material };
   });
+}
+
+function hslToRgb(h, s, l) {
+  if (s === 0) return [l, l, l];
+  const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+  const p = 2 * l - q;
+  const f = (t) => {
+    if (t < 0) t += 1;
+    if (t > 1) t -= 1;
+    if (t < 1 / 6) return p + (q - p) * 6 * t;
+    if (t < 1 / 2) return q;
+    if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+    return p;
+  };
+  return [f(h + 1 / 3), f(h), f(h - 1 / 3)];
 }
