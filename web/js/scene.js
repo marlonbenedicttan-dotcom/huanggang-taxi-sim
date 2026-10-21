@@ -17,6 +17,7 @@ import {
   bufferPos, standPos, bayPos, queuePos, baySlots, doorPos,
 } from "./layout.js";
 import { glowTexture, signTexture } from "./textures.js";
+import { instances } from "./assets.js";
 
 const TAXI_CAP = 72;
 const PAX_CAP = 80;
@@ -177,12 +178,19 @@ export class Scene3D {
   }
 
   _buildPools() {
+    const A = this.assets;
+    this.taxiInst = A?.taxi ? instances(A.taxi, TAXI_CAP, this.root) : null;
+    this.paxInst = A?.people ? A.people.map((p) => instances(p, PAX_CAP, this.root)) : null;
+
+    this.taxiShadow = this._pool(this.geo.shadow, this.mat.shadow, TAXI_CAP);
+    this.paxShadow = [0, 1, 2].map(() => this._pool(this.geo.blob, this.mat.shadow, PAX_CAP));
+
+    if (this.taxiInst && this.paxInst) return;   // models cover everything
+
     this.taxiShell = this._pool(this.geo.shell, this.mat.shell, TAXI_CAP, true);
     this.taxiRoof = this._pool(this.geo.roof, this.mat.roof, TAXI_CAP);
     this.taxiDark = this._pool(this.geo.dark, this.mat.dark, TAXI_CAP);
-    this.taxiShadow = this._pool(this.geo.shadow, this.mat.shadow, TAXI_CAP);
     this.paxMesh = [0, 1, 2].map((c) => this._pool(this.geo.person, this.mat.person[c], PAX_CAP));
-    this.paxShadow = [0, 1, 2].map(() => this._pool(this.geo.blob, this.mat.shadow, PAX_CAP));
 
     // arrival ripples
     this.rippleMeshes = [];
@@ -833,20 +841,31 @@ export class Scene3D {
 
       q.setFromAxisAngle(up, e.yaw || 0);
       m.compose(new THREE.Vector3(e.x, 0.02, e.z), q, new THREE.Vector3(1, 1, 1));
-      this.taxiShell.setMatrixAt(n, m);
-      this.taxiRoof.setMatrixAt(n, m);
-      this.taxiDark.setMatrixAt(n, m);
-      col.setHex(CLS_COLOR[e.cls] || 0xffffff);
-      this.taxiShell.setColorAt(n, col);
+      if (this.taxiInst) {
+        this.taxiInst.set(n, m);
+      } else {
+        this.taxiShell.setMatrixAt(n, m);
+        this.taxiRoof.setMatrixAt(n, m);
+        this.taxiDark.setMatrixAt(n, m);
+        col.setHex(CLS_COLOR[e.cls] || 0xffffff);
+        this.taxiShell.setColorAt(n, col);
+      }
       m.compose(new THREE.Vector3(e.x, 0.012, e.z), new THREE.Quaternion(), new THREE.Vector3(1, 1, 1));
       this.taxiShadow.setMatrixAt(n, m);
       n++;
     }
-    for (const mesh of [this.taxiShell, this.taxiRoof, this.taxiDark, this.taxiShadow]) {
-      mesh.count = n;
-      mesh.instanceMatrix.needsUpdate = true;
+    if (this.taxiInst) {
+      this.taxiInst.count = n;
+      this.taxiInst.flush();
+    } else {
+      for (const mesh of [this.taxiShell, this.taxiRoof, this.taxiDark]) {
+        mesh.count = n;
+        mesh.instanceMatrix.needsUpdate = true;
+      }
+      if (this.taxiShell.instanceColor) this.taxiShell.instanceColor.needsUpdate = true;
     }
-    if (this.taxiShell.instanceColor) this.taxiShell.instanceColor.needsUpdate = true;
+    this.taxiShadow.count = n;
+    this.taxiShadow.instanceMatrix.needsUpdate = true;
 
     /* --- people --- */
     const counts = [0, 0, 0];
@@ -888,18 +907,25 @@ export class Scene3D {
       const i = counts[c];
       if (i >= PAX_CAP) continue;
       const bob = e.moving ? Math.abs(Math.sin(this.time * 7.5 + id)) * 0.03 : 0;
-      const variety = 0.9 + (((id * 13) % 7) / 7) * 0.2;
-      const scale = Math.max(0.05, Math.min(1, e.fade)) * 1.15 * variety;
-      q.setFromAxisAngle(up, e.yaw + Math.PI / 2);
-      m.compose(new THREE.Vector3(e.x, 0.02 + bob, e.z), q, new THREE.Vector3(scale, scale, scale));
-      this.paxMesh[c].setMatrixAt(i, m);
-      m.compose(new THREE.Vector3(e.x, 0.015, e.z), new THREE.Quaternion(), new THREE.Vector3(scale, scale, 1));
+      const variety = 0.94 + (((id * 13) % 7) / 7) * 0.12;
+      const scale = Math.max(0.05, Math.min(1, e.fade)) * variety;
+      // character models face -Z, so add PI to the heading
+      q.setFromAxisAngle(up, (e.yaw || 0) + Math.PI);
+      m.compose(new THREE.Vector3(e.x, 0.01 + bob, e.z), q, new THREE.Vector3(scale, scale, scale));
+      if (this.paxInst) this.paxInst[c].set(i, m);
+      else this.paxMesh[c].setMatrixAt(i, m);
+      m.compose(new THREE.Vector3(e.x, 0.015, e.z), new THREE.Quaternion(), new THREE.Vector3(scale * 0.8, scale, 1));
       this.paxShadow[c].setMatrixAt(i, m);
       counts[c]++;
     }
     for (let c = 0; c < 3; c++) {
-      this.paxMesh[c].count = counts[c];
-      this.paxMesh[c].instanceMatrix.needsUpdate = true;
+      if (this.paxInst) {
+        this.paxInst[c].count = counts[c];
+        this.paxInst[c].flush();
+      } else {
+        this.paxMesh[c].count = counts[c];
+        this.paxMesh[c].instanceMatrix.needsUpdate = true;
+      }
       this.paxShadow[c].count = counts[c];
       this.paxShadow[c].instanceMatrix.needsUpdate = true;
     }
