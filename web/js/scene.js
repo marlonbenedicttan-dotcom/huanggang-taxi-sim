@@ -13,7 +13,7 @@
 
 import * as THREE from "../vendor/three.module.js";
 import {
-  CLS, CLS_COLOR, LANES, EXIT_X, TAXI, TERMINAL,
+  CLS, CLS_COLOR, CLS_LABEL, LANE_TITLE, LANES, EXIT_X, TAXI, TERMINAL,
   bufferPos, standPos, bayPos, queuePos, baySlots, doorPos,
 } from "./layout.js";
 import { glowTexture, signTexture, daySkyTexture, cloudTexture } from "./textures.js";
@@ -401,7 +401,7 @@ export class Scene3D {
       this.root.add(glow);
       this.laneGlow[id] = glow;
 
-      const tag = this.label(CLS[id].toUpperCase(), "#51606f", 0.44);
+      const tag = this.label(LANE_TITLE[id], "#51606f", 0.36);
       tag.position.set(3.4, 1.0, y - 1.7);
       this.root.add(tag);
     }
@@ -652,7 +652,7 @@ export class Scene3D {
     // hanging lane signs above the queue entrance
     for (const id of [0, 1, 2]) {
       const y = LANES[CLS[id]];
-      const tex = signTexture(CLS[id].toUpperCase(), "#eaf3ff");
+      const tex = signTexture(LANE_TITLE[id], "#eaf3ff");
       const board = new THREE.Mesh(
         new THREE.PlaneGeometry(3.1, 0.96),
         new THREE.MeshStandardMaterial({

@@ -11,7 +11,9 @@
  */
 
 export const CLS = ["urban", "nt", "prebook", "flex"];
-export const CLS_LABEL = ["Urban (red)", "NT (green)", "Pre-booked", "Flexible"];
+export const CLS_LABEL = ["Urban (red)", "New Territories (green)", "Pre-booked", "Flexible"];
+/** Full names on lane signs: abbreviations confuse first-time viewers. */
+export const LANE_TITLE = ["URBAN", "NEW TERRITORIES", "PRE-BOOKED", "FLEXIBLE"];
 export const CLS_COLOR = [0xe8503f, 0x17a67c, 0x2f7fd4, 0xf5a623];
 export const CSS_COLOR = ["#e8503f", "#17a67c", "#2f7fd4", "#f5a623"];
 

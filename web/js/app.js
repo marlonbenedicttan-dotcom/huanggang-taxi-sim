@@ -23,7 +23,7 @@ const GROUPS = [
         hint: "Walk-up passengers per hour, averaged over the shift. Count arrivals at the taxi hall for 2-3 days." },
       { key: "taxiSupplyRatioUrban", label: "Urban taxis arriving", min: 0.7, max: 1.4, step: 0.05, unit: "× demand",
         hint: "Empty urban taxis entering the buffer, relative to passenger demand. 1.0 means supply matches demand on average." },
-      { key: "taxiSupplyRatioNt", label: "NT taxis arriving", min: 0.7, max: 1.4, step: 0.05, unit: "× demand",
+      { key: "taxiSupplyRatioNt", label: "New Territories taxis", min: 0.7, max: 1.4, step: 0.05, unit: "× demand",
         hint: "Same for New Territories taxis. Below 1.0 the NT lane is structurally short of taxis." },
       { key: "stands.urban", label: "Urban pickup bays", min: 3, max: 14, step: 1, int: true,
         hint: "Physical bays serving the urban queue. Each bay boards roughly one taxi every 1.5 minutes." },
@@ -32,7 +32,7 @@ const GROUPS = [
   {
     name: "Demand mix",
     items: [
-      { key: "urbanShare", label: "Urban vs NT split", min: 0.5, max: 0.95, step: 0.05, pct: true,
+      { key: "urbanShare", label: "Urban vs New Territories", min: 0.5, max: 0.95, step: 0.05, pct: true,
         hint: "Share of walk-up passengers heading to urban destinations. The rest join the NT queue." },
       { key: "prebookShare", label: "Booked in advance", min: 0, max: 0.35, step: 0.05, pct: true,
         hint: "Share using fleet / pre-booked taxis instead of the walk-up hall." },
@@ -48,7 +48,7 @@ const GROUPS = [
   {
     name: "Pickup hall",
     items: [
-      { key: "stands.nt", label: "NT pickup bays", min: 1, max: 8, step: 1, int: true,
+      { key: "stands.nt", label: "New Territories bays", min: 1, max: 8, step: 1, int: true,
         hint: "Bays serving the New Territories queue." },
       { key: "service", label: "Boarding time per taxi", min: 0.8, max: 3.5, step: 0.1, unit: "min",
         hint: "Registration, luggage and payment. Stopwatch ~50 boardings; app pre-registration shortens it by 25%." },
@@ -620,7 +620,7 @@ function updateHud(frame) {
     [2, frame.q[2]],
   ]
     .filter(([, n]) => n > 0)
-    .map(([c, n]) => `<span class="chip"><i style="background:${CSS_COLOR[c]}"></i>${n} ${CLS_LABEL[c].split(" ")[0]}</span>`)
+    .map(([c, n]) => `<span class="chip"><i style="background:${CSS_COLOR[c]}"></i>${n} ${CLS_LABEL[c].split(" (")[0]}</span>`)
     .join("");
   const bufLabel = IS_PHONE ? `${frame.buf} taxis` : `${frame.buf} taxis in buffer`;
   $("#counts").innerHTML = chips + `<span class="chip"><i class="buf"></i>${bufLabel}</span>`;
