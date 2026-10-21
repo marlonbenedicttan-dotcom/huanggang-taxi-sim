@@ -1,54 +1,101 @@
 /**
- * Crossy-Road-style scene.
+ * 3D view of the taxi hall.
  *
- * Deliberately primitive: every object is a box, a cylinder or a cone, with
- * flat colours, one soft light and an orthographic isometric camera. That is
- * the whole art direction — and it means no textures, no glTF and far fewer
- * things that can break.
+ * Design goals, in order:
+ *   1. legible at a glance - chunky vehicles, bright lane markings, no clutter
+ *   2. readable motion    - ease in/out, limited turn rate, a boarding beat
+ *   3. explains the model - live counters over each zone, the starving lane is
+ *                           highlighted, arrival ripples show the arrival rate
  *
- * Data interface (unchanged):
- *   setScene(meta) · sync(frame) · tick(dt, hour) · render(dt) · resize()
- *   attachLabels(host) · setQuality(q) · setDprScale(s)
+ * Performance: taxis are 3 InstancedMeshes (body / white roof / dark parts),
+ * passengers are 3+3, so ~60 taxis and ~150 people cost ~12 draw calls.
  */
 
 import * as THREE from "../vendor/three.module.js";
 import {
-  CLS, CLS_COLOR, CLS_SHORT, LANE_TITLE, LANES, EXIT_X, TERMINAL,
-  bufferPos, standPos, bayPos, queuePos, doorPos, baySlots,
+  CLS, CLS_COLOR, LANES, EXIT_X, TAXI, TERMINAL,
+  bufferPos, standPos, bayPos, queuePos, baySlots, doorPos,
 } from "./layout.js";
+import { glowTexture, signTexture, daySkyTexture, cloudTexture } from "./textures.js";
+import { instances } from "./assets.js";
 
-const TAXI_CAP = 80;
-const PAX_CAP = 90;
+const TAXI_CAP = 72;
+const PAX_CAP = 80;
+const TARMAC = 0x2b3543;
+const MARK = 0x55637a;
 
-/* Crossy-Road palette: saturated, high contrast, no gradients. */
-const C = {
-  // warm paper + graphite ink, accents drawn from the UI palette
-  paper: 0xfffdf7,
-  paperShade: 0xf3ecdd,
-  road: 0xd6c9b2,
-  roadEdge: 0xbfb098,
-  water: 0xe8eef0,
-  ink: 0x33302a,
-  accent: 0xc9523f,
-  accent2: 0x4f8f86,
-  roof: 0xfffdf7,
-  glass: 0x9a9188,
-};
+/* ------------------------------------------------------------------ *
+ * geometry helpers
+ * ------------------------------------------------------------------ */
+function merge(parts) {
+  const geos = parts.map((p) => {
+    const g = p.geo.clone();
+    g.applyMatrix4(
+      new THREE.Matrix4().compose(
+        new THREE.Vector3(p.x || 0, p.y || 0, p.z || 0),
+        new THREE.Quaternion().setFromEuler(new THREE.Euler(p.rx || 0, p.ry || 0, p.rz || 0)),
+        new THREE.Vector3(1, 1, 1)
+      )
+    );
+    return g.index ? g.toNonIndexed() : g;
+  });
+  let total = 0;
+  for (const g of geos) total += g.attributes.position.count;
+  const pos = new Float32Array(total * 3);
+  const nor = new Float32Array(total * 3);
+  let off = 0;
+  for (const g of geos) {
+    pos.set(g.attributes.position.array, off * 3);
+    nor.set(g.attributes.normal.array, off * 3);
+    off += g.attributes.position.count;
+  }
+  const out = new THREE.BufferGeometry();
+  out.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3));
+  out.setAttribute("normal", new THREE.Float32BufferAttribute(nor, 3));
+  return out;
+}
 
-/* ------------------------------------------------------------------ */
+const box = (w, h, d) => new THREE.BoxGeometry(w, h, d);
+
+/* Taxi: coloured shell, white roof, dark glass and wheels. */
+function taxiShellGeo() {
+  return merge([
+    { geo: box(TAXI.length, 0.26, TAXI.width), y: 0.29 },              // lower body
+    { geo: box(0.5, 0.19, TAXI.width - 0.06), y: 0.5, x: -0.08 },      // cabin
+    { geo: box(0.1, 0.06, 0.16), y: 0.71, x: -0.08 },                  // roof sign
+  ]);
+}
+function taxiRoofGeo() {
+  return merge([{ geo: box(0.54, 0.04, TAXI.width - 0.02), y: 0.62, x: -0.08 }]);
+}
+function taxiDarkGeo() {
+  const wheel = new THREE.CylinderGeometry(0.085, 0.085, 0.06, 8);
+  return merge([
+    { geo: wheel, x: 0.3, y: 0.09, z: 0.27, rx: Math.PI / 2 },
+    { geo: wheel, x: 0.3, y: 0.09, z: -0.27, rx: Math.PI / 2 },
+    { geo: wheel, x: -0.3, y: 0.09, z: 0.27, rx: Math.PI / 2 },
+    { geo: wheel, x: -0.3, y: 0.09, z: -0.27, rx: Math.PI / 2 },
+    { geo: box(0.36, 0.1, TAXI.width - 0.02), y: 0.47, x: 0.13 },      // windscreen
+  ]);
+}
+
+/* Person: capsule body + head. */
+function personGeo() {
+  return merge([
+    { geo: new THREE.CapsuleGeometry(0.1, 0.14, 4, 8), y: 0.22 },
+    { geo: new THREE.SphereGeometry(0.085, 8, 6), y: 0.45 },
+  ]);
+}
+
+/* ------------------------------------------------------------------ *
+ * Scene
+ * ------------------------------------------------------------------ */
 export class Scene3D {
   constructor(canvas) {
     this.canvas = canvas;
     this.quality = "high";
     this.maxDpr = 1.75;
-    this.dprScale = 1;
     this.portrait = false;
-    this.assets = null;          // kit models are no longer used
-    this.taxis = new Map();
-    this.people = new Map();
-    this.time = 0;
-    this.labels = null;
-    this.metaFrame = null;
 
     this.renderer = new THREE.WebGLRenderer({
       canvas,
@@ -57,52 +104,143 @@ export class Scene3D {
     });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, this.maxDpr));
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
+    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    this.renderer.toneMappingExposure = 1.08;
 
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0xf7f1e6);
+    this.scene.background = daySkyTexture();
+    this.scene.fog = new THREE.Fog(0xe3eef5, 190, 320);
+    this.clouds = [];
 
-    // orthographic isometric camera — the Crossy Road look
-    this.camera = new THREE.OrthographicCamera(-40, 40, 30, -30, -200, 400);
-    this.target = new THREE.Vector3(25, 0, 7);
-    this.viewOffset = { theta: Math.PI / 4, phi: 0.98, zoom: 1, size: 62 };
+    this.camera = new THREE.PerspectiveCamera(40, 1, 0.1, 400);
+    this.target = new THREE.Vector3(22, 1.2, 11);
+    this.orbit = { theta: Math.PI / 2 + 0.09, phi: 0.95, radius: 48 };
+    this.autoRotate = false;
 
-    this.scene.add(new THREE.AmbientLight(0xffffff, 1.55));
-    const sun = new THREE.DirectionalLight(0xffffff, 1.05);
-    sun.position.set(-18, 34, 16);
-    this.scene.add(sun);
-    const fill = new THREE.DirectionalLight(0xcfe6ff, 0.35);
-    fill.position.set(20, 18, -22);
-    this.scene.add(fill);
+    this.hemi = new THREE.HemisphereLight(0xffffff, 0xa9b8b0, 1.05);
+    this.scene.add(this.hemi);
+    this.sun = new THREE.DirectionalLight(0xfff6e6, 1.55);
+    this.sun.position.set(22, 40, 18);
+    this.scene.add(this.sun);
+    this.rim = new THREE.DirectionalLight(0xdceaff, 0.45);
+    this.rim.position.set(-24, 18, -22);
+    this.scene.add(this.rim);
 
     this.root = new THREE.Group();
     this.scene.add(this.root);
+
+    this.geo = {
+      shell: taxiShellGeo(),
+      roof: taxiRoofGeo(),
+      dark: taxiDarkGeo(),
+      person: personGeo(),
+      ground: new THREE.PlaneGeometry(96, 76),
+      shadow: new THREE.CircleGeometry(0.5, 14),
+      blob: new THREE.CircleGeometry(0.22, 10),
+      ripple: new THREE.RingGeometry(0.32, 0.4, 20),
+    };
+
+    this.mat = {
+      shell: new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.55, metalness: 0.05 }),
+      roof: new THREE.MeshStandardMaterial({ color: 0xfbfcfd, roughness: 0.7 }),
+      dark: new THREE.MeshStandardMaterial({ color: 0x2b313a, roughness: 0.75 }),
+      shadow: new THREE.MeshBasicMaterial({ color: 0x1d2a24, transparent: true, opacity: 0.16, depthWrite: false }),
+      person: CLS_COLOR.map(
+        (c) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.78 })
+      ),
+    };
+
+    this.taxis = new Map();
+    this.people = new Map();
+    this.ripples = [];
+    this.bayMeshes = [];
+    this.laneGlow = [];
+    this.time = 0;
+    this.hour = 9;
+    this.assets = null;
+    this.dprScale = 1;
 
     this._bindControls();
     this.resize();
   }
 
-  /* ---------------- camera controls ---------------- */
+  /* ---------------- instanced pools ---------------- */
+  _pool(geo, mat, n, colored = false) {
+    const m = new THREE.InstancedMesh(geo, mat, n);
+    m.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    m.frustumCulled = false;
+    m.count = 0;
+    if (colored) {
+      m.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(n * 3), 3);
+      m.instanceColor.setUsage(THREE.DynamicDrawUsage);
+    }
+    this.root.add(m);
+    return m;
+  }
+
+  _buildPools() {
+    const A = this.assets;
+    this.taxiInst = A?.taxi ? instances(A.taxi, TAXI_CAP, this.root) : null;
+    this.paxInst = A?.people ? A.people.map((p) => instances(p, PAX_CAP, this.root)) : null;
+
+    this.taxiShadow = this._pool(this.geo.shadow, this.mat.shadow, TAXI_CAP);
+    // coloured roof sign: carries the class colour now that the taxi is a model
+    this.signMesh = new THREE.InstancedMesh(
+      new THREE.BoxGeometry(0.34, 0.11, 0.2),
+      new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xffffff, emissiveIntensity: 0.45, roughness: 0.5 }),
+      TAXI_CAP
+    );
+    this.signMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    this.signMesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(TAXI_CAP * 3), 3);
+    this.signMesh.frustumCulled = false;
+    this.signMesh.count = 0;
+    this.root.add(this.signMesh);
+    this.paxShadow = [0, 1, 2].map(() => this._pool(this.geo.blob, this.mat.shadow, PAX_CAP));
+
+    if (this.taxiInst && this.paxInst) return;   // models cover everything
+
+    this.taxiShell = this._pool(this.geo.shell, this.mat.shell, TAXI_CAP, true);
+    this.taxiRoof = this._pool(this.geo.roof, this.mat.roof, TAXI_CAP);
+    this.taxiDark = this._pool(this.geo.dark, this.mat.dark, TAXI_CAP);
+    this.paxMesh = [0, 1, 2].map((c) => this._pool(this.geo.person, this.mat.person[c], PAX_CAP));
+
+    // arrival ripples
+    this.rippleMeshes = [];
+    for (let i = 0; i < 10; i++) {
+      const mesh = new THREE.Mesh(
+        this.geo.ripple,
+        new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, depthWrite: false })
+      );
+      mesh.rotation.x = -Math.PI / 2;
+      mesh.visible = false;
+      this.root.add(mesh);
+      this.rippleMeshes.push({ mesh, life: 0 });
+    }
+    this.rippleIdx = 0;
+  }
+
+  /* ---------------- camera ---------------- */
   _bindControls() {
     const pointers = new Map();
-    let pinch = 0;
-    let startZoom = 1;
-
-    const dist = () => {
+    let pinchStart = 0;
+    let radiusStart = 0;
+    const distance = () => {
       const [a, b] = [...pointers.values()];
       return Math.hypot(a.x - b.x, a.y - b.y);
     };
 
     this.canvas.addEventListener("pointerdown", (e) => {
+      this.autoRotate = false;
       this.canvas.setPointerCapture(e.pointerId);
       pointers.set(e.pointerId, { x: e.clientX, y: e.clientY, lx: e.clientX, ly: e.clientY });
       if (pointers.size === 2) {
-        pinch = dist();
-        startZoom = this.viewOffset.zoom;
+        pinchStart = distance();
+        radiusStart = this.orbit.radius;
       }
     });
     const release = (e) => {
       pointers.delete(e.pointerId);
-      if (pointers.size < 2) pinch = 0;
+      if (pointers.size < 2) pinchStart = 0;
     };
     this.canvas.addEventListener("pointerup", release);
     this.canvas.addEventListener("pointercancel", release);
@@ -113,21 +251,21 @@ export class Scene3D {
       if (pointers.size >= 2) {
         p.x = e.clientX;
         p.y = e.clientY;
-        if (pinch > 0) {
-          this.viewOffset.zoom = Math.min(1.7, Math.max(0.75, (startZoom * dist()) / pinch));
+        if (pinchStart > 0) {
+          const scale = pinchStart / Math.max(24, distance());
+          this.orbit.radius = Math.min(140, Math.max(22, radiusStart * scale));
         }
         return;
       }
-      // rotate the isometric angle in 90°-ish steps for a clean look
-      this.viewOffset.theta -= (e.clientX - p.lx) * 0.006;
-      this.viewOffset.phi = Math.min(1.05, Math.max(0.78, this.viewOffset.phi - (e.clientY - p.ly) * 0.003));
+      this.orbit.theta -= (e.clientX - p.lx) * 0.007;
+      this.orbit.phi = Math.min(1.32, Math.max(0.22, this.orbit.phi - (e.clientY - p.ly) * 0.006));
       p.lx = e.clientX;
       p.ly = e.clientY;
     }, { passive: true });
 
     this.canvas.addEventListener("wheel", (e) => {
       e.preventDefault();
-      this.viewOffset.zoom = Math.min(1.7, Math.max(0.75, this.viewOffset.zoom - e.deltaY * 0.0012));
+      this.orbit.radius = Math.min(140, Math.max(22, this.orbit.radius + e.deltaY * 0.05));
     }, { passive: false });
 
     let lastTap = 0;
@@ -141,19 +279,24 @@ export class Scene3D {
   }
 
   resetCamera() {
-    this.viewOffset = { theta: Math.PI / 4, phi: 0.98, zoom: 1, size: this.portrait ? 46 : 62 };
+    this.orbit = { theta: Math.PI / 2 + 0.09, phi: 0.95, radius: 48 };
+    this.autoRotate = false;
+  }
+
+  /** Adaptive resolution: drop the pixel ratio when frames get expensive. */
+  setDprScale(scale) {
+    this.dprScale = Math.max(0.6, Math.min(1, scale));
+    this.renderer.setPixelRatio(
+      Math.min(window.devicePixelRatio || 1, this.maxDpr * this.dprScale)
+    );
+    this.resize();
   }
 
   setQuality(q) {
     this.quality = q;
     this.maxDpr = q === "low" ? 1 : 1.75;
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, this.maxDpr * this.dprScale));
-    this.resize();
-  }
-
-  setDprScale(scale) {
-    this.dprScale = Math.max(0.6, Math.min(1, scale));
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, this.maxDpr * this.dprScale));
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, this.maxDpr));
+    this.scene.fog = q === "low" ? null : new THREE.Fog(0xe3eef5, 190, 320);
     this.resize();
   }
 
@@ -161,100 +304,30 @@ export class Scene3D {
     const w = this.canvas.clientWidth || 800;
     const h = this.canvas.clientHeight || 600;
     this.renderer.setSize(w, h, false);
-    this.portrait = h > w;
-    const size = this.portrait ? 92 : 66;
-    this.camera.left = -size / 2;
-    this.camera.right = size / 2;
-    this.camera.top = size / 2;
-    this.camera.bottom = -size / 2;
+    const portrait = h > w;
+    // on a tall screen, look *along* the hall (west -> east) so its length runs
+    // up the screen instead of being squeezed into a narrow strip
+    if (this.wasPortrait !== portrait) {
+      this.wasPortrait = portrait;
+      this.orbit = portrait
+        ? { theta: 2.72, phi: 0.82, radius: 68 }
+        : { theta: Math.PI / 2 + 0.1, phi: 0.78, radius: 52 };
+    }
+    this.portrait = portrait;
+    this.camera.fov = portrait ? 50 : 40;
+    this.camera.aspect = w / h;
+    if (portrait) this.camera.setViewOffset(w, h, 0, Math.round(h * 0.06), w, h);
+    else this.camera.clearViewOffset();
     this.camera.updateProjectionMatrix();
   }
 
-  /* ---------------- helpers ---------------- */
-  /** A box with a black silhouette behind it — the whole look in one helper. */
-  box(w, h, d, color, opts = {}, outline = true) {
-    const geo = new THREE.BoxGeometry(w, h, d);
-    const m = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ color, ...opts }));
-
-    // A scaled black back-face shell works as an outline on chunky volumes,
-    // but on a thin slab the shell sits in front of the top face and the slab
-    // renders solid black. Flat pieces opt out.
-    const flatPiece = h < 0.5 && Math.max(w, d) > 1.5;
-    if (outline && !flatPiece) {
-      const edge = new THREE.Mesh(
-        geo,
-        new THREE.MeshBasicMaterial({ color: C.ink, side: THREE.BackSide })
-      );
-      edge.scale.setScalar(1.035);
-      m.add(edge);
-    }
-    return m;
-  }
-
-  /** Place a baked kit model (already normalised: base at y=0, centred x/z). */
-  addModel(parts, x, z, rotY = 0, scale = 1, y = 0) {
-    if (!parts) return null;
-    const g = new THREE.Group();
-    for (const p of parts) {
-      let mat = p.material;
-      if (!mat.userData.warmed) {
-        mat = mat.clone();
-        mat.color = mat.color.clone().multiply(new THREE.Color(0xfff0d8));
-        mat.userData.warmed = true;
-      }
-      g.add(new THREE.Mesh(p.geometry, mat));
-    }
-    g.position.set(x, y, z);
-    g.rotation.y = rotY;
-    g.scale.setScalar(scale);
-    this.root.add(g);
-    return g;
-  }
-
-  /** One draw call for a repeated static prop. */
-  addInstanced(geo, material, spots, outline = true) {
-    const mesh = new THREE.InstancedMesh(geo, material, spots.length);
-    const m = new THREE.Matrix4();
-    spots.forEach(([x, y, z, s = 1], i) => {
-      m.compose(new THREE.Vector3(x, y, z), new THREE.Quaternion(), new THREE.Vector3(s, s, s));
-      mesh.setMatrixAt(i, m);
-    });
-    mesh.instanceMatrix.needsUpdate = true;
-    this.root.add(mesh);
-
-    if (outline) {
-      const edge = new THREE.InstancedMesh(
-        geo,
-        new THREE.MeshBasicMaterial({ color: C.ink, side: THREE.BackSide }),
-        spots.length
-      );
-      spots.forEach(([x, y, z, s = 1], i) => {
-        m.compose(new THREE.Vector3(x, y, z), new THREE.Quaternion(),
-          new THREE.Vector3(s * 1.07, s * 1.05, s * 1.07));
-        edge.setMatrixAt(i, m);
-      });
-      edge.instanceMatrix.needsUpdate = true;
-      this.root.add(edge);
-    }
-    return mesh;
-  }
-
-  /** Baked-looking contact shadow: a flat dark disc under an object. */
-  shadowMesh(radius = 0.45, opacity = 0.18) {
-    const m = new THREE.Mesh(
-      new THREE.CircleGeometry(radius, 12),
-      new THREE.MeshBasicMaterial({ color: 0x1d2a24, transparent: true, opacity, depthWrite: false })
-    );
-    m.rotation.x = -Math.PI / 2;
-    return m;
-  }
-
-  label(text, color = "#2f3a45", size = 0.5) {
-    const font = "800 56px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
+  /* ---------------- text sprite ---------------- */
+  label(text, color = "#c8d4e6", size = 0.6) {
+    const font = "700 54px -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif";
     const probe = document.createElement("canvas").getContext("2d");
     probe.font = font;
     const w = Math.ceil(probe.measureText(text).width) + 40;
-    const h = 100;
+    const h = 104;
     const c = document.createElement("canvas");
     c.width = w;
     c.height = h;
@@ -266,366 +339,433 @@ export class Scene3D {
     g.fillText(text, w / 2, h / 2);
     const tex = new THREE.CanvasTexture(c);
     tex.colorSpace = THREE.SRGBColorSpace;
+    tex.anisotropy = 4;
     const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false }));
-    const height = size * 1.8;
+    const height = size * 1.9;
     s.scale.set((height * w) / h, height, 1);
     return s;
   }
 
-  /* ---------------- world ---------------- */
+  /* ---------------- static world ---------------- */
   setScene(meta) {
     this.root.clear();
     this.taxis.clear();
     this.people.clear();
-    this.meta = meta;
     this.bayMeshes = [];
+    this.laneGlow = [];
+    this.meta = meta;
 
-    this.root.add(this.plain(160, 160, C.paperShade, 0, -0.06, 10));
-
-    // tarmac apron under the operational area
-    this.root.add(this.plain(56, 28, C.road, 22.5, -0.02, 10.5));
-    this.root.add(this.plain(56, 5.6, C.paper, 22.5, 0.0, -3.4));
-
-    // three lanes: road strips with a coloured kerb stripe
-    for (const id of [0, 1, 2]) {
-      const y = LANES[CLS[id]];
-      this.root.add(this.plain(50, 4.9, C.road, 23, 0.01, y));
-      for (const dz of [-2.45, 2.45]) {
-        this.root.add(this.plain(50, 0.06, 0xb9b6ad, 23, 0.02, y + dz));
-      }
-      // a single coloured line keeps the class readable without painting the road
-      this.root.add(this.plain(50, 0.12, CLS_COLOR[id], 23, 0.021, y + 2.2));
-      // lane names live in the HTML counters; painted kerbs carry the colour
-    }
-
-    // approach road in front
-    this.root.add(this.plain(64, 6, C.road, 21, 0.012, 25.4));
-    for (let x = -8; x < 52; x += 4.4) {
-      this.root.add(this.plain(2.2, 0.16, C.roadEdge, x, 0.022, 25.4));
-    }
-
-    this._buildBuffer();
-    this._buildBays();
-    this._buildTerminal();
-    this._buildTrees();
-    this._buildFurniture();
-    this._buildPools();
-
-    this._buildBayCanopy();
-    this._buildMarkings();
-  }
-
-  plain(w, d, color, x, y, z) {
-    const m = new THREE.Mesh(
-      new THREE.PlaneGeometry(w, d),
-      new THREE.MeshLambertMaterial({ color })
+    const ground = new THREE.Mesh(
+      this.geo.ground,
+      new THREE.MeshStandardMaterial({ color: 0xa9b8b0, roughness: 1 })
     );
-    m.rotation.x = -Math.PI / 2;
-    m.position.set(x, y, z);
-    return m;
-  }
-
-  /** The waiting area: a lighter apron with painted slots, so taxis queue on
-   *  something rather than an empty grey rectangle. */
-  _buildBuffer() {
-    const flat = (c) => new THREE.MeshLambertMaterial({ color: c, flatShading: true });
-    const lines = [];
-    const floors = [];
+    ground.rotation.x = -Math.PI / 2;
+    ground.position.set(23, -0.02, 12);
+    this.root.add(ground);
 
     for (const id of [0, 1, 2]) {
       const y = LANES[CLS[id]];
-      floors.push(this.plain(11.5, 5.0, 0x76808c, 7.0, 0.008, y));
 
-      for (let i = 0; i < 24; i++) {
-        const [bx, bz] = bufferPos(id, i);
-        // two short strokes per slot read as a painted parking bay
-        lines.push([bx - 0.42, 0.02, bz - 0.3], [bx + 0.42, 0.02, bz - 0.3]);
-        lines.push([bx - 0.42, 0.02, bz + 0.3], [bx + 0.42, 0.02, bz + 0.3]);
+      // lane asphalt, slightly lighter so the three lanes read as lanes
+      const tint = new THREE.Color(CLS_COLOR[id]).lerp(new THREE.Color(0xffffff), 0.58);
+      const strip = new THREE.Mesh(
+        new THREE.PlaneGeometry(50, 4.9),
+        new THREE.MeshStandardMaterial({ color: tint, roughness: 1 })
+      );
+      strip.rotation.x = -Math.PI / 2;
+      strip.position.set(23, 0.005, y);
+      this.root.add(strip);
+
+      // painted edges
+      for (const dy of [-2.42, 2.42]) {
+        const edge = new THREE.Mesh(
+          new THREE.PlaneGeometry(50, 0.09),
+          new THREE.MeshBasicMaterial({
+            color: new THREE.Color(CLS_COLOR[id]).lerp(new THREE.Color(0xffffff), 0.05),
+            transparent: true,
+            opacity: 0.9,
+          })
+        );
+        edge.rotation.x = -Math.PI / 2;
+        edge.position.set(23, 0.012, y + dy);
+        this.root.add(edge);
       }
+
+      // coloured glow used to mark the bottleneck
+      const glow = new THREE.Mesh(
+        new THREE.PlaneGeometry(50, 4.9),
+        new THREE.MeshBasicMaterial({ color: CLS_COLOR[id], transparent: true, opacity: 0.03, depthWrite: false })
+      );
+      glow.rotation.x = -Math.PI / 2;
+      glow.position.set(23, 0.008, y);
+      this.root.add(glow);
+      this.laneGlow[id] = glow;
+
+      const tag = this.label(CLS[id].toUpperCase(), "#51606f", 0.44);
+      tag.position.set(3.4, 1.0, y - 1.7);
+      this.root.add(tag);
     }
 
-    this.addInstanced(new THREE.BoxGeometry(0.84, 0.02, 0.05), flat(0xd8dee6), lines);
-
-    const tag = this.label("WAITING AREA", "#2f3a45", 0.34);
-    tag.position.set(7.0, 0.9, -3.2);
-    this.root.add(tag);
-  }
-
-  _buildBays() {
-    const spots = [];
-    this.bayIndex = [];
-    for (const gid of this.meta.groups) {
+    // pickup bays
+    for (const gid of meta.groups) {
       const id = ["urban", "nt", "prebook", "pool"].indexOf(gid);
       if (id < 0) continue;
-      baySlots(id).forEach(([x, z], i) => {
-        spots.push([x, 0.04, z]);
-        this.bayIndex.push({ id, idx: i });
-      });
+      const slots = baySlots(id);
+      for (let idx = 0; idx < slots.length; idx++) {
+        const [x, y] = slots[idx];
+        const mat = new THREE.MeshStandardMaterial({
+          color: 0xe3e9ee,
+          emissive: new THREE.Color(CLS_COLOR[id]),
+          emissiveIntensity: 0.06,
+          roughness: 0.85,
+        });
+        const m = new THREE.Mesh(box(1.9, 0.1, 1.0), mat);
+        m.position.set(x, 0.05, y);
+        this.root.add(m);
+        this.bayMeshes.push({ mesh: m, id, idx });
+      }
     }
-    if (!spots.length) return;
 
-    const geo = new THREE.BoxGeometry(1.9, 0.08, 1.0);
-    const mat = new THREE.MeshLambertMaterial({ color: 0xffffff, flatShading: true });
-    const mesh = new THREE.InstancedMesh(geo, mat, spots.length);
-    mesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(spots.length * 3), 3);
-    const m = new THREE.Matrix4();
-    const c = new THREE.Color();
-    spots.forEach(([x, y, z], i) => {
-      m.makeTranslation(x, y, z);
-      mesh.setMatrixAt(i, m);
-      mesh.setColorAt(i, c.setHex(0xe8e3d6));
-    });
-    mesh.instanceMatrix.needsUpdate = true;
-    mesh.instanceColor.needsUpdate = true;
-    this.root.add(mesh);
-    this.bayMesh = mesh;
+    this._buildTerminal();
+    this._buildRoad();
+    this._buildProps();
+    this._buildSky();
+    this._buildStreetFurniture();
+    this._buildAssets();
+    this._buildPools();
+
+    const t1 = this.label("WAITING AREA", "#51606f", 0.44);
+    t1.position.set(7.5, 1.0, -2.4);
+    this.root.add(t1);
+    const t2 = this.label("PICKUP BAYS", "#51606f", 0.44);
+    t2.position.set(40, 1.0, -1.6);
+    this.root.add(t2);
   }
 
   _buildTerminal() {
     const T = TERMINAL;
+    const concrete = new THREE.MeshStandardMaterial({ color: 0xeef1f4, roughness: 0.85 });
+    const glass = new THREE.MeshStandardMaterial({
+      color: 0xfff0cc,
+      emissive: new THREE.Color(0xffe6b0),
+      emissiveIntensity: 0.55,
+      roughness: 0.6,
+    });
+    this.windowMat = new THREE.MeshStandardMaterial({
+      color: 0x8fc0dd,
+      emissive: new THREE.Color(0xffe3ae),
+      emissiveIntensity: 0.25,
+      roughness: 0.4,
+      metalness: 0.05,
+    });
 
-    // main hall: a long block with a coloured roof
-    const kit = null;
-    if (kit && kit.length) {
-      // three kit buildings form the terminal frontage
-      [[7, 5.4], [22, 6.0], [37, 5.2]].forEach(([x, h], i) => {
-        this.addModel(kit[i % kit.length], x, T.y - 4.5, 0, h / 5, 0);
-      });
-    } else {
-      const hall = this.box(40, 4.1, 6, C.paper);
-      hall.position.set(22, 2.05, T.y - 3.0);
-      this.root.add(hall);
-      const roof = this.box(41, 0.45, 6.6, C.paper);
-      roof.position.set(22, 4.32, T.y - 3.0);
-      this.root.add(roof);
-      for (const y of [1.3, 3.0]) {
-        const band = this.box(38, 0.75, 0.1, C.glass);
-        band.position.set(22, y, T.y + 0.05);
-        this.root.add(band);
-      }
+    const doors = [[13.2, 15.0], [16.7, 18.5], [20.2, 22.0]];
+
+    // glass doors sit on the face of the kit buildings
+    for (const [a, b] of doors) {
+      const d = new THREE.Mesh(new THREE.PlaneGeometry(b - a, 2.6), glass);
+      d.position.set((a + b) / 2, 1.3, T.y + T.depth / 2 + 2.6);
+      this.root.add(d);
     }
 
-    // recessed entrance
-    const recess = this.box(9.0, 3.0, 2.6, 0x3a4652);
-    recess.position.set(17.6, 1.5, T.y - 0.6);
-    this.root.add(recess);
-    for (let i = 0; i < 2; i++) {
-      const step = this.box(9.4 - i * 0.5, 0.16, 0.6, C.paperShade);
-      step.position.set(17.6, 0.08 + i * 0.16, T.y + 1.3 + i * 0.55);
-      this.root.add(step);
-    }
-
-    // entrance canopy
-    const canopy = this.box(13, 0.3, 3.2, 0x5f9c92);
-    canopy.position.set(17.6, 3.3, T.y + 2.2);
+    // entrance canopy over the doors
+    const canopy = new THREE.Mesh(
+      box(11, 0.16, 2.6),
+      new THREE.MeshStandardMaterial({ color: 0x2f8f7a, roughness: 0.8 })
+    );
+    canopy.position.set(17.6, 3.1, T.y + T.depth / 2 + 4.2);
     this.root.add(canopy);
-    for (const x of [11.6, 23.6]) {
-      const col = this.box(0.5, 3.3, 0.5, C.paperShade);
-      col.position.set(x, 1.65, T.y + 4.4);
-      this.root.add(col);
-    }
 
-    // sign board above the entrance
-    const board = this.box(11, 1.2, 0.25, C.paper);
-    board.position.set(17.6, 5.35, T.y - 0.2);
-    this.root.add(board);
-    const sign = this.label("HUANGGANG PORT", "#22303c", 0.58);
-    sign.position.set(17.6, 5.35, T.y + 0.02);
+    const sign = this.label("HUANGGANG PORT  ·  皇岗口岸", "#2f3a47", 0.78);
+    sign.position.set(17.6, 4.3, T.y + T.depth / 2 + 4.4);
     this.root.add(sign);
 
-    // skyline: kit buildings if they loaded, simple blocks otherwise
-    const skyline = null;
-    if (skyline && skyline.length) {
-      const row1 = [[1, -13.5, 6.4], [11, -15, 5.2], [21, -13, 6.8], [32, -14.5, 5.6], [43, -13.5, 6.2]];
-      row1.forEach(([x, z, h], i) => this.addModel(skyline[i % skyline.length], x, z, 0, h / 5, 0));
-      const row2 = [[6, -22, 8.5], [20, -23, 7.4], [34, -21.5, 9.2], [47, -22.5, 7.0]];
-      row2.forEach(([x, z, h], i) => this.addModel(skyline[(i + 1) % skyline.length], x, z, 0, h / 5, 0));
-    } else {
-      const blocks = [
-        [-6, 7, C.paper], [4, 9, C.accent2], [14, 6, C.paper],
-        [30, 8, C.accent2], [42, 10, C.paper], [52, 7, C.paper],
-      ];
-      for (const [x, h, roofColor] of blocks) {
-        const b = this.box(9, h, 8, C.paper);
-        b.position.set(x, h / 2, -16);
-        this.root.add(b);
-        const r = this.box(9.6, 0.5, 8.6, roofColor);
-        r.position.set(x, h + 0.25, -16);
-        this.root.add(r);
-        for (const wy of [h * 0.35, h * 0.7]) {
-          const wb = this.box(8, 0.6, 0.1, C.glass);
-          wb.position.set(x, wy, -11.95);
-          this.root.add(wb);
-        }
+    // kerb in front of the terminal
+    const kerb = new THREE.Mesh(box(48, 0.16, 0.5), new THREE.MeshStandardMaterial({ color: 0xb9c3cd, roughness: 0.9 }));
+    kerb.position.set(21, 0.08, T.y + T.depth / 2 + 3.2);
+    this.root.add(kerb);
+
+    const taxiSign = this.label("TAXI  的士", "#33404f", 0.6);
+    taxiSign.position.set(40, 2.0, -1.1);
+    this.root.add(taxiSign);
+
+    const poleMat = new THREE.MeshStandardMaterial({ color: 0x46536a, roughness: 0.6 });
+    for (const px of [12, 24, 36]) {
+      for (const py of [2.2, 10.2, 18.2]) {
+        const pole = new THREE.Mesh(box(0.09, 2.6, 0.09), poleMat);
+        pole.position.set(px, 1.3, py);
+        this.root.add(pole);
+        const lamp = new THREE.Mesh(
+          new THREE.SphereGeometry(0.12, 7, 5),
+          new THREE.MeshStandardMaterial({ color: 0xfff4d6, emissive: 0xffe9b8, emissiveIntensity: 1.1 })
+        );
+        lamp.position.set(px, 2.66, py);
+        this.root.add(lamp);
       }
     }
   }
 
-  /** A roof over the pickup bays, so the rank reads as infrastructure. */
-  _buildBayCanopy() {
-    const flat = (c) => new THREE.MeshLambertMaterial({ color: c, flatShading: true });
-    const posts = [];
-    for (const x of [35.0, 41.0]) {
-      for (let z = 2; z <= 21; z += 4.5) posts.push([x, 2.0, z]);
-    }
-    this.addInstanced(new THREE.BoxGeometry(0.2, 4.0, 0.2), flat(0xe9e4d6), posts);
-
-    const roof = this.box(5.4, 0.2, 19, 0xd97757);
-    roof.position.set(38.0, 4.3, 11.5);
-    this.root.add(roof);
-
-    // coloured fascia so the roof reads as a structure, not a blank card
-    const trim = this.box(6.6, 0.4, 0.3, 0xc4633f);
-    trim.position.set(38.0, 4.2, 1.6);
-    this.root.add(trim);
-    const trim2 = this.box(6.6, 0.4, 0.3, 0xc4633f);
-    trim2.position.set(38.0, 4.2, 21.4);
-    this.root.add(trim2);
-
-    // chevrons on the tarmac leading into the bays
-    const marks = [];
-    for (let z = 2; z <= 21; z += 3.2) marks.push([32.4, 0.02, z]);
-    this.addInstanced(new THREE.BoxGeometry(0.9, 0.02, 0.16), flat(0xd8dee6), marks);
-
-    const tag = this.label("PICKUP BAYS", "#2f3a45", 0.34);
-    tag.position.set(38.2, 3.9, -0.6);
-    this.root.add(tag);
-  }
-
-  /** Extra ground detail so the apron is not a blank grey field. */
-  _buildMarkings() {
-    const flat = (c) => new THREE.MeshLambertMaterial({ color: c, flatShading: true });
-
-    // pedestrian crossing between the terminal and the rank
-    const stripes = [];
-    for (let z = -0.2; z <= 22; z += 1.6) stripes.push([30.2, 0.02, z]);
-    this.addInstanced(new THREE.BoxGeometry(1.6, 0.02, 0.8), flat(0xe8eef5), stripes);
-
-    // a taxi rank arrow painted on each lane approach
-    const arrows = [];
-    for (const id of [0, 1, 2]) {
-      const y = LANES[CLS[id]];
-      for (const x of [15.5, 18, 20.5]) arrows.push([x, 0.02, y]);
-    }
-    this.addInstanced(new THREE.BoxGeometry(1.1, 0.02, 0.9), flat(0xdfe6ee), arrows);
-
-    // curb along the frontage
-    const kerb = this.box(52, 0.22, 0.4, C.paperShade);
-    kerb.position.set(22, 0.11, -0.9);
-    this.root.add(kerb);
-  }
-
-  _buildTrees() {
+  /** Drifting billboard clouds above the terminal. */
+  _buildSky() {
+    this.clouds.forEach((c) => this.root.remove(c.sprite));
+    this.clouds = [];
+    if (this.quality === "low") return;
+    const tex = cloudTexture();
     const spots = [
-      [-6, 4], [-6, 14], [-6, 24], [-6, 32],
-      [50, 4], [50, 14], [50, 24], [50, 32],
-      [-2, -10], [12, -10], [26, -10], [40, -10],
-      [56, -10], [10, 34], [34, 34], [46, 34],
+      [-14, 13, -30, 16], [8, 16, -38, 20], [28, 12, -34, 15],
+      [46, 17, -42, 22], [62, 14, -30, 17], [20, 19, -50, 24],
     ];
-    const flat = (c) => new THREE.MeshLambertMaterial({ color: c, flatShading: true });
-
-    this.addInstanced(new THREE.CylinderGeometry(0.16, 0.2, 1.0, 6), flat(C.ink),
-      spots.map(([x, z]) => [x, 0.5, z]));
-    this.addInstanced(new THREE.ConeGeometry(0.8, 1.4, 7), flat(0x9db98a),
-      spots.map(([x, z]) => [x, 1.55, z]));
-    this.addInstanced(new THREE.ConeGeometry(0.58, 1.0, 7), flat(0xb3cba2),
-      spots.map(([x, z]) => [x, 2.2, z]));
-    this.addInstanced(new THREE.CircleGeometry(0.95, 10),
-      new THREE.MeshBasicMaterial({ color: 0x1d2a24, transparent: true, opacity: 0.14, depthWrite: false }),
-      spots.map(([x, z]) => [x, 0.02, z]));
+    for (const [x, y, z, scale] of spots) {
+      const sprite = new THREE.Sprite(
+        new THREE.SpriteMaterial({ map: tex, transparent: true, opacity: 0.85, depthWrite: false })
+      );
+      sprite.position.set(x, y, z);
+      sprite.scale.set(scale, scale * 0.5, 1);
+      this.root.add(sprite);
+      this.clouds.push({ sprite, speed: 0.15 + Math.random() * 0.2 });
+    }
   }
 
-  _buildFurniture() {
-    const flat = (c) => new THREE.MeshLambertMaterial({ color: c, flatShading: true });
+  /** Benches, bins, a shelter and a ticket machine — the street-level detail. */
+  _buildStreetFurniture() {
+    if (this.quality === "low") return;
+    const wood = new THREE.MeshStandardMaterial({ color: 0xb98a5e, roughness: 0.85 });
+    const metal = new THREE.MeshStandardMaterial({ color: 0x8d9aa8, roughness: 0.6, metalness: 0.25 });
+    const green = new THREE.MeshStandardMaterial({ color: 0x2f8f7a, roughness: 0.8 });
+    const glass = new THREE.MeshStandardMaterial({ color: 0xbfe0ea, transparent: true, opacity: 0.45, roughness: 0.2 });
 
-    // benches + bins along the frontage
-    const benchX = [];
-    for (let x = 4; x <= 44; x += 8) benchX.push(x);
-    this.addInstanced(new THREE.BoxGeometry(1.7, 0.14, 0.55), flat(0xb98a5e),
-      benchX.map((x) => [x, 0.42, -1.4]));
-    this.addInstanced(new THREE.BoxGeometry(1.7, 0.5, 0.12), flat(0xb98a5e),
-      benchX.map((x) => [x, 0.72, -1.66]));
-    this.addInstanced(new THREE.CylinderGeometry(0.2, 0.18, 0.6, 8), flat(0x3f8f5a),
-      benchX.map((x) => [x + 2.5, 0.3, -1.2]));
+    const z0 = TERMINAL.y + TERMINAL.depth / 2 + 5.2;
+    for (let x = 4; x <= 44; x += 8) {
+      // bench
+      const seat = new THREE.Mesh(box(1.6, 0.1, 0.5), wood);
+      seat.position.set(x, 0.42, z0);
+      this.root.add(seat);
+      const back = new THREE.Mesh(box(1.6, 0.45, 0.09), wood);
+      back.position.set(x, 0.66, z0 - 0.22);
+      this.root.add(back);
+      for (const dx of [-0.6, 0.6]) {
+        const leg = new THREE.Mesh(box(0.1, 0.42, 0.1), metal);
+        leg.position.set(x + dx, 0.21, z0);
+        this.root.add(leg);
+      }
+      // bin
+      const bin = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.16, 0.55, 10), green);
+      bin.position.set(x + 2.4, 0.28, z0 + 0.2);
+      this.root.add(bin);
+    }
 
-    // lamp posts
-    const lamps = [];
-    for (const x of [10, 22, 34]) for (const z of [2.2, 12, 21]) lamps.push([x, z]);
-    this.addInstanced(new THREE.BoxGeometry(0.12, 2.6, 0.12), flat(0x8d98a5),
-      lamps.map(([x, z]) => [x, 1.3, z]));
-    this.addInstanced(new THREE.BoxGeometry(0.34, 0.2, 0.34), flat(0xfff3c4),
-      lamps.map(([x, z]) => [x, 2.68, z]));
+    // waiting shelter
+    const sx = 26;
+    for (const dx of [-1.6, 1.6]) {
+      for (const dz of [-0.7, 0.7]) {
+        const post = new THREE.Mesh(box(0.1, 2.1, 0.1), metal);
+        post.position.set(sx + dx, 1.05, z0 + dz);
+        this.root.add(post);
+      }
+    }
+    const roof = new THREE.Mesh(box(3.8, 0.12, 2.0), green);
+    roof.position.set(sx, 2.15, z0);
+    this.root.add(roof);
+    const panel = new THREE.Mesh(new THREE.PlaneGeometry(3.2, 1.6), glass);
+    panel.position.set(sx, 1.3, z0 - 0.75);
+    this.root.add(panel);
 
-    // queue railings
-    const rail = [];
+    // ticket machine
+    const machine = new THREE.Mesh(box(0.7, 1.5, 0.45), metal);
+    machine.position.set(33, 0.75, z0 + 0.4);
+    this.root.add(machine);
+    const screen = new THREE.Mesh(new THREE.PlaneGeometry(0.45, 0.3), new THREE.MeshBasicMaterial({ color: 0x9fd8ff }));
+    screen.position.set(33, 1.15, z0 + 0.63);
+    this.root.add(screen);
+  }
+
+  /** The taxi approach road: fills the foreground and explains the entry flow. */
+  _buildRoad() {
+    const road = new THREE.Mesh(
+      new THREE.PlaneGeometry(64, 6),
+      new THREE.MeshStandardMaterial({
+        color: 0xb8c3c9,
+        roughness: 0.95,
+      })
+    );
+    road.rotation.x = -Math.PI / 2;
+    road.position.set(21, 0.004, 25.4);
+    this.root.add(road);
+
+    // kerb lines
+    for (const dz of [-3.5, 3.5]) {
+      const line = new THREE.Mesh(
+        new THREE.PlaneGeometry(64, 0.1),
+        new THREE.MeshBasicMaterial({ color: 0x6d7d95, transparent: true, opacity: 0.7 })
+      );
+      line.rotation.x = -Math.PI / 2;
+      line.position.set(21, 0.014, 25.4 + dz);
+      this.root.add(line);
+    }
+
+    // dashed centre line
+    for (let x = -9; x < 52; x += 4.4) {
+      const dash = new THREE.Mesh(
+        new THREE.PlaneGeometry(2.2, 0.13),
+        new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.85 })
+      );
+      dash.rotation.x = -Math.PI / 2;
+      dash.position.set(x, 0.014, 25.4);
+      this.root.add(dash);
+    }
+
+    // direction chevrons pointing into the hall
+    for (const x of [2, 14, 26]) {
+      for (const dz of [-1.6, 1.6]) {
+        const ch = new THREE.Mesh(
+          new THREE.PlaneGeometry(0.9, 0.16),
+          new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.8 })
+        );
+        ch.rotation.x = -Math.PI / 2;
+        ch.rotation.z = 0.6;
+        ch.position.set(x, 0.015, 25.4 + dz);
+        this.root.add(ch);
+      }
+    }
+
+    const sign = this.label("TAXI APPROACH", "#5b6b7a", 0.5);
+    sign.position.set(3, 1.2, 31.2);
+    this.root.add(sign);
+  }
+
+  /** Railings along the queues, hanging lane signs, bollards and lamp glow. */
+  _buildProps() {
+    const metal = new THREE.MeshStandardMaterial({ color: 0x9aa8b6, roughness: 0.6, metalness: 0.2 });
+    const parts = [];
+    const post = () => box(0.05, 0.62, 0.05);
+
     for (const id of [0, 1, 2]) {
       const y = LANES[CLS[id]];
       for (const dz of [-2.15, 2.15]) {
-        for (let x = 12.8; x <= 24; x += 2.8) rail.push([x, y + dz]);
+        for (let x = 12.6; x <= 24.4; x += 2.95) parts.push({ geo: post(), x, y: 0.31, z: y + dz });
+        // top rail
+        parts.push({ geo: box(11.9, 0.045, 0.045), x: 18.45, y: 0.62, z: y + dz });
       }
     }
-    this.addInstanced(new THREE.BoxGeometry(0.07, 0.7, 0.07), flat(0x9aa6b2),
-      rail.map(([x, z]) => [x, 0.35, z]));
-  }
+    this.root.add(new THREE.Mesh(merge(parts), metal));
 
-  /* ---------------- instanced entities ---------------- */
-  _pool(geo, mat, n, colored = false) {
-    const m = new THREE.InstancedMesh(geo, mat, n);
-    m.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-    m.frustumCulled = false;
-    m.count = 0;
-    m.userData.entity = true;
-    if (colored) {
-      m.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(n * 3), 3);
-      m.instanceColor.setUsage(THREE.DynamicDrawUsage);
+    // hanging lane signs above the queue entrance
+    for (const id of [0, 1, 2]) {
+      const y = LANES[CLS[id]];
+      const tex = signTexture(CLS[id].toUpperCase(), "#eaf3ff");
+      const board = new THREE.Mesh(
+        new THREE.PlaneGeometry(3.1, 0.96),
+        new THREE.MeshStandardMaterial({
+          map: tex, roughness: 0.55,
+          emissive: 0xffffff, emissiveMap: tex, emissiveIntensity: 0.55,
+        })
+      );
+      board.position.set(12.9, 2.5, y);
+      this.root.add(board);
+      for (const dx of [-0.9, 0.9]) {
+        const rod = new THREE.Mesh(box(0.04, 0.9, 0.04), metal);
+        rod.position.set(12.9 + dx, 2.9, y);
+        this.root.add(rod);
+      }
     }
-    this.root.add(m);
-    return m;
+
+    // bollards along the kerb
+    const bollards = [];
+    for (let x = 1; x <= 46; x += 2.6) bollards.push({ geo: box(0.09, 0.5, 0.09), x, y: 0.25, z: TERMINAL.y + TERMINAL.depth / 2 + 1.2 });
+    this.root.add(new THREE.Mesh(merge(bollards), new THREE.MeshStandardMaterial({ color: 0x9aa8bb, roughness: 0.5, metalness: 0.35 })));
+
+    // trees: cheap and they make the hall feel like a place
+    const trunkMat = new THREE.MeshStandardMaterial({ color: 0x9c7550, roughness: 0.9 });
+    const leafMats = [0x5fae6b, 0x4f9e63, 0x71bd77].map(
+      (c) => new THREE.MeshStandardMaterial({ color: c, roughness: 0.9 })
+    );
+    const spots = [[-7, 14], [-7, 21], [-7, 28], [55, 14], [55, 21], [55, 28], [7, 34], [37, 34]];
+    spots.forEach(([x, z], i) => {
+      const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.15, 1.0, 6), trunkMat);
+      trunk.position.set(x, 0.5, z);
+      this.root.add(trunk);
+      const crown = new THREE.Mesh(new THREE.IcosahedronGeometry(0.85, 0), leafMats[i % 3]);
+      crown.position.set(x, 1.55, z);
+      this.root.add(crown);
+      const top = new THREE.Mesh(new THREE.IcosahedronGeometry(0.55, 0), leafMats[(i + 1) % 3]);
+      top.position.set(x + 0.25, 2.2, z - 0.15);
+      this.root.add(top);
+    });
+
+    // warm lamp glow (additive sprites, no extra lights)
+    const glow = glowTexture();
+    for (const px of [12, 24, 36]) {
+      for (const py of [2.2, 10.2, 18.2]) {
+        const sprite = new THREE.Sprite(new THREE.SpriteMaterial({
+          map: glow, color: 0xffe8c0, transparent: true, opacity: 0.35,
+          blending: THREE.AdditiveBlending, depthWrite: false,
+        }));
+        sprite.scale.set(2.4, 2.4, 1);
+        sprite.position.set(px, 2.66, py);
+        this.root.add(sprite);
+      }
+    }
   }
 
-  _buildPools() {
-    const mat = (c) => new THREE.MeshLambertMaterial({ color: c, flatShading: true });
-
-    // taxi: coloured body, white cabin, dark wheels
-    this.taxiShell = this._pool(new THREE.BoxGeometry(1.0, 0.34, 0.56), mat(0xffffff), TAXI_CAP, true);
-    this.taxiRoof = this._pool(new THREE.BoxGeometry(0.52, 0.3, 0.5), mat(C.paper), TAXI_CAP);
-    this.taxiDark = this._pool(new THREE.BoxGeometry(1.02, 0.12, 0.58), mat(C.ink), TAXI_CAP);
-    this.taxiShadow = this._pool(new THREE.CircleGeometry(0.55, 12), new THREE.MeshBasicMaterial({
-      color: 0x1d2a24, transparent: true, opacity: 0.18, depthWrite: false,
-    }), TAXI_CAP);
-    this.taxiShadow.geometry.rotateX(-Math.PI / 2);
-
-    // ink silhouette for the taxi body
-    this.taxiEdge = this._pool(
-      new THREE.BoxGeometry(1.0, 0.34, 0.56),
-      new THREE.MeshBasicMaterial({ color: C.ink, side: THREE.BackSide }),
-      TAXI_CAP
-    );
-
-    // person: coloured body + skin head
-    this.paxMesh = [0, 1, 2].map((c) =>
-      this._pool(new THREE.BoxGeometry(0.34, 0.44, 0.28), mat(CLS_COLOR[c]), PAX_CAP)
-    );
-    this.paxHead = this._pool(new THREE.BoxGeometry(0.26, 0.26, 0.26), mat(0xf0c39a), PAX_CAP);
-    this.paxShadow = this._pool(new THREE.CircleGeometry(0.16, 10), new THREE.MeshBasicMaterial({
-      color: 0x1d2a24, transparent: true, opacity: 0.16, depthWrite: false,
-    }), PAX_CAP);
-    this.paxShadow.geometry.rotateX(-Math.PI / 2);
-
-    this.paxEdge = this._pool(
-      new THREE.BoxGeometry(0.34, 0.44, 0.28),
-      new THREE.MeshBasicMaterial({ color: C.ink, side: THREE.BackSide }),
-      PAX_CAP
-    );
+  /** Place one baked model (already normalised: y=0 base, centred on x/z). */
+  addModel(parts, x, z, rotY = 0, scale = 1, y = 0, stretch = null, tint = null) {
+    if (!parts) return null;
+    const g = new THREE.Group();
+    for (const p of parts) {
+      let mat = p.material;
+      if (tint) {
+        mat = mat.clone();
+        mat.color = mat.color.clone().multiply(new THREE.Color(tint));
+      }
+      g.add(new THREE.Mesh(p.geometry, mat));
+    }
+    g.position.set(x, y, z);
+    g.rotation.y = rotY;
+    if (stretch) g.scale.set(scale * stretch[0], scale, scale * stretch[1]);
+    else g.scale.setScalar(scale);
+    this.root.add(g);
+    return g;
   }
 
+  /** City backdrop, trees and planters from the CC0 kits. */
+  _buildAssets() {
+    const A = this.assets;
+    if (!A) return;
+    const low = this.quality === "low";
+
+    // the terminal itself: a run of kit buildings forming the facade
+    const blocks = low ? [4, 20, 36] : [1, 10.5, 20, 29.5, 39];
+    blocks.forEach((x, i) => {
+      const b = A.buildings[i % A.buildings.length];
+      this.addModel(b, x, -7.6 - (i % 2) * 1.2, 0, 1.0, 0, [2.1, 1.3], 0xffe4c2);
+    });
+
+    if (low) return;
+
+    // trees along both edges and behind the building
+    const treeSpots = [
+      [-9, 12, 1.5], [-9, 20, 1.2], [-9, 28, 1.6],
+      [57, 12, 1.4], [57, 22, 1.5], [57, 30, 1.2],
+      [6, -14, 1.7], [30, -14, 1.5], [46, -14, 1.6],
+    ];
+    for (const [x, z, sc] of treeSpots) {
+      this.addModel(A.trees[(x + z) % A.trees.length], x, z, (x + z) * 0.7, sc);
+    }
+
+    // planters along the terminal kerb
+    for (let x = 2; x <= 44; x += 6.5) {
+      this.addModel(A.bushes[(x | 0) % A.bushes.length], x, TERMINAL.y + TERMINAL.depth / 2 + 2.2, 0, 1.6);
+    }
+  }
+
+  /* ---------------- zone counters (HTML, crisp text) ---------------- */
   attachLabels(host) {
     if (!host) return;
     host.innerHTML = "";
     this.labelEls = [0, 1, 2].map((c) => {
       const el = document.createElement("div");
       el.className = "zone-label";
-      el.style.setProperty("--c", ["#e8503f", "#17a67c", "#2f7fd4"][c]);
+      el.style.setProperty("--c", "#f2685c");
       host.appendChild(el);
       return el;
     });
@@ -651,21 +791,23 @@ export class Scene3D {
     for (let c = 0; c < 3; c++) {
       const el = this.labelEls[c];
       const [wx, wz] = queuePos(c, Math.min(6, Math.max(0, f.q[c] - 1)));
-      const p = this.project(wx, 1.6, wz - 2.2);
-      el.classList.toggle("hidden", f.q[c] === 0 || p.z > 1);
-      el.classList.toggle("worst", c === worst && f.q[c] > 6);
-      el.innerHTML = `<b>${f.q[c]}</b> waiting`;
+      const p = this.project(wx, 1.3, wz - 2.4);
+      const n = f.q[c];
+      el.style.setProperty("--c", ["#f2685c", "#2ec4a6", "#4a9eff"][c]);
+      el.classList.toggle("hidden", n === 0 || p.z > 1);
+      el.classList.toggle("worst", c === worst && n > 6);
+      el.innerHTML = `<b>${n}</b> waiting`;
       el.style.transform = `translate(${p.x}px, ${p.y}px) translate(-50%, -100%)`;
     }
     const buf = this.labelEls[3];
     const [bx, bz] = bufferPos(0, 10);
-    const pb = this.project(bx, 1.6, bz - 2);
+    const pb = this.project(bx, 1.3, bz - 2.2);
     buf.innerHTML = `<b>${f.buf}</b> taxis`;
     buf.style.transform = `translate(${pb.x}px, ${pb.y}px) translate(-50%, -100%)`;
     buf.classList.toggle("hidden", pb.z > 1);
   }
 
-  /* ---------------- state ---------------- */
+  /* ---------------- per-frame state ---------------- */
   sync(frame) {
     this.metaFrame = frame;
     const seenT = new Set();
@@ -674,31 +816,35 @@ export class Scene3D {
     for (const row of frame.tx) {
       const [id, clsId, state, slot, group, bay] = row;
       seenT.add(id);
-      const [x, z] = state === 2 ? bayPos(group, bay) : state === 1 ? standPos(clsId, slot) : bufferPos(clsId, slot);
+      const [x, y] = state === 2 ? bayPos(group, bay) : state === 1 ? standPos(clsId, slot) : bufferPos(clsId, slot);
       let e = this.taxis.get(id);
       if (!e) {
-        e = { x: -12, z: 25.4, yaw: 0, v: 0, cls: clsId, exiting: false, wp: { x: -3, z: 22.6 } };
+        // enter from the approach road, then swing into the buffer lane
+        e = {
+          x: -14, z: 25.4, yaw: 0, v: 0, cls: clsId, exiting: false,
+          wp: { x: -3.0, z: 22.6 },
+        };
         this.taxis.set(id, e);
       }
       e.tx = x;
-      e.tz = z;
-      e.parked = state === 2;
+      e.tz = y;
       e.exiting = false;
     }
 
     for (const [id, clsId, slot] of frame.px) {
       seenP.add(id);
-      const [qx, qz] = queuePos(clsId, slot);
-      const jx = (((id * 37) % 13) / 13 - 0.5) * 0.18;
-      const jz = (((id * 53) % 11) / 11 - 0.5) * 0.2;
+      const [qx, qy] = queuePos(clsId, slot);
+      const jx = (((id * 37) % 17) / 17 - 0.5) * 0.24;
+      const jz = (((id * 53) % 19) / 19 - 0.5) * 0.28;
       let e = this.people.get(id);
       if (!e) {
-        const [dx, dz] = doorPos(clsId);
-        e = { x: dx, z: dz, yaw: 0, v: 0, cls: clsId, leaving: false, fade: 0, wait: 0 };
+        const [dx, dy] = doorPos(clsId);
+        e = { x: dx, z: dy, yaw: 0, v: 0, cls: clsId, leaving: false, fade: 1, wait: 0 };
         this.people.set(id, e);
+        this._ripple(dx, dy, CLS_COLOR[clsId]);
       }
       e.tx = qx + jx;
-      e.tz = qz + jz;
+      e.tz = qy + jz;
     }
 
     for (const [id, e] of this.people) {
@@ -707,7 +853,7 @@ export class Scene3D {
         e.leaving = true;
         e.tx = 38.2;
         e.tz = LANES[CLS[e.cls]];
-        e.wait = 0.3;
+        e.wait = 0.35;          // the boarding beat
       }
     }
 
@@ -720,146 +866,234 @@ export class Scene3D {
     }
   }
 
-  /* ---------------- per-frame ---------------- */
+  _ripple(x, z, color) {
+    if (!this.rippleMeshes || this.quality === "low") return;
+    const r = this.rippleMeshes[this.rippleIdx % this.rippleMeshes.length];
+    this.rippleIdx++;
+    r.mesh.position.set(x, 0.03, z);
+    r.mesh.material.color.setHex(color);
+    r.mesh.visible = true;
+    r.life = 1;
+  }
+
+  /* ---------------- motion + draw ---------------- */
   tick(dt, hour) {
     this.time += dt;
+    if (hour != null) this.setHour(hour);
+
     const m = new THREE.Matrix4();
     const q = new THREE.Quaternion();
     const up = new THREE.Vector3(0, 1, 0);
     const col = new THREE.Color();
 
+    /* --- taxis --- */
     let n = 0;
     for (const [id, e] of this.taxis) {
       let gx = e.tx;
       let gz = e.tz;
       if (e.wp) {
-        if (Math.hypot(e.wp.x - e.x, e.wp.z - e.z) < 1.2) e.wp = null;
+        if (Math.hypot(e.wp.x - e.x, e.wp.z - e.z) < 1.4) e.wp = null;
         else { gx = e.wp.x; gz = e.wp.z; }
       }
       const dx = gx - e.x;
       const dz = gz - e.z;
       const dist = Math.hypot(dx, dz);
 
-      if (dist > 25) { e.x = e.tx; e.z = e.tz; }
-      else if (dist > 0.01) {
-        const want = Math.min(e.exiting ? 8 : 6, Math.max(0.4, dist * 2.4));
-        e.v += (want - e.v) * Math.min(1, dt * 7);
-        const step = Math.min(dist, e.v * dt);
-        e.x += (dx / dist) * step;
-        e.z += (dz / dist) * step;
-        // at a bay the taxi squares up to the kerb instead of keeping its
-        // approach angle (that was reading as a car park)
-        const yaw = e.parked && dist < 1.2 ? 0 : Math.atan2(dz, dx);
-        let d = yaw - e.yaw;
+      if (dist > 9) {
+        e.x = e.tx;
+        e.z = e.tz;
+        e.v = 0;
+      } else if (dist > 0.02) {
+        // ease in/out: fast when far, gentle on arrival
+        const want = Math.min(e.exiting ? 9 : 7, Math.max(0.5, dist * 2.6));
+        e.v += (want - e.v) * Math.min(1, dt * 6);
+        const stepLen = Math.min(dist, e.v * dt);
+        e.x += (dx / dist) * stepLen;
+        e.z += (dz / dist) * stepLen;
+
+        // limited turn rate -> arcs instead of instant snapping
+        const want_yaw = Math.atan2(dz, dx);
+        let d = want_yaw - e.yaw;
         while (d > Math.PI) d -= Math.PI * 2;
         while (d < -Math.PI) d += Math.PI * 2;
-        e.yaw += Math.max(-7 * dt, Math.min(7 * dt, d));
-      } else e.v = 0;
+        e.yaw += Math.max(-6 * dt, Math.min(6 * dt, d));
+      } else {
+        e.v = 0;
+      }
 
-      if (e.exiting === "exit" && dist < 0.4) { this.taxis.delete(id); continue; }
+      if (e.exiting === "exit" && dist < 0.4) {
+        this.taxis.delete(id);
+        continue;
+      }
       if (n >= TAXI_CAP) break;
 
       q.setFromAxisAngle(up, e.yaw || 0);
-      m.compose(new THREE.Vector3(e.x, 0.3, e.z), q, new THREE.Vector3(1, 1, 1));
-      this.taxiShell.setMatrixAt(n, m);
-      m.compose(new THREE.Vector3(e.x, 0.3, e.z), q, new THREE.Vector3(1.05, 1.08, 1.06));
-      this.taxiEdge.setMatrixAt(n, m);
-      col.setHex(CLS_COLOR[e.cls] ?? 0xffffff);
-      this.taxiShell.setColorAt(n, col);
-
-      m.compose(new THREE.Vector3(e.x, 0.52, e.z), q, new THREE.Vector3(1, 1, 1));
-      this.taxiRoof.setMatrixAt(n, m);
-      m.compose(new THREE.Vector3(e.x, 0.12, e.z), q, new THREE.Vector3(1, 1, 1));
-      this.taxiDark.setMatrixAt(n, m);
-      m.compose(new THREE.Vector3(e.x, 0.03, e.z), new THREE.Quaternion(), new THREE.Vector3(1, 1, 1));
+      m.compose(new THREE.Vector3(e.x, 0.02, e.z), q, new THREE.Vector3(1, 1, 1));
+      if (this.taxiInst) {
+        this.taxiInst.set(n, m);
+      } else {
+        this.taxiShell.setMatrixAt(n, m);
+        this.taxiRoof.setMatrixAt(n, m);
+        this.taxiDark.setMatrixAt(n, m);
+        col.setHex(CLS_COLOR[e.cls] || 0xffffff);
+        this.taxiShell.setColorAt(n, col);
+      }
+      m.compose(new THREE.Vector3(e.x, 0.012, e.z), new THREE.Quaternion(), new THREE.Vector3(1, 1, 1));
       this.taxiShadow.setMatrixAt(n, m);
+      m.compose(new THREE.Vector3(e.x, 0.86, e.z), q, new THREE.Vector3(1, 1, 1));
+      this.signMesh.setMatrixAt(n, m);
+      this.signMesh.setColorAt(n, col.setHex(CLS_COLOR[e.cls] || 0xffffff));
       n++;
     }
-    for (const mesh of [this.taxiShell, this.taxiRoof, this.taxiDark, this.taxiShadow, this.taxiEdge]) {
-      mesh.count = n;
-      mesh.instanceMatrix.needsUpdate = true;
+    if (this.taxiInst) {
+      this.taxiInst.count = n;
+      this.taxiInst.flush();
+    } else {
+      for (const mesh of [this.taxiShell, this.taxiRoof, this.taxiDark]) {
+        mesh.count = n;
+        mesh.instanceMatrix.needsUpdate = true;
+      }
+      if (this.taxiShell.instanceColor) this.taxiShell.instanceColor.needsUpdate = true;
     }
-    if (this.taxiShell.instanceColor) this.taxiShell.instanceColor.needsUpdate = true;
+    this.taxiShadow.count = n;
+    this.taxiShadow.instanceMatrix.needsUpdate = true;
+    this.signMesh.count = n;
+    this.signMesh.instanceMatrix.needsUpdate = true;
+    if (this.signMesh.instanceColor) this.signMesh.instanceColor.needsUpdate = true;
 
-    /* people */
+    /* --- people --- */
     const counts = [0, 0, 0];
-    let total = 0;
     for (const [id, e] of this.people) {
       const dx = e.tx - e.x;
       const dz = e.tz - e.z;
       const dist = Math.hypot(dx, dz);
 
-      if (dist > 12) { e.x = e.tx; e.z = e.tz; }
-      else if (dist > 0.02) {
-        const want = Math.min(1.8, Math.max(0.3, dist * 2.2));
-        e.v += (want - e.v) * Math.min(1, dt * 8);
-        const step = Math.min(dist, e.v * dt);
-        e.x += (dx / dist) * step;
-        e.z += (dz / dist) * step;
+      if (dist > 4.5) {
+        e.x = e.tx;
+        e.z = e.tz;
+      } else if (dist > 0.02) {
+        const want = Math.min(1.9, Math.max(0.35, dist * 2.4));
+        e.v += (want - e.v) * Math.min(1, dt * 7);
+        const stepLen = Math.min(dist, e.v * dt);
+        e.x += (dx / dist) * stepLen;
+        e.z += (dz / dist) * stepLen;
+        const want_yaw = Math.atan2(dz, dx);
+        let d = want_yaw - e.yaw;
+        while (d > Math.PI) d -= Math.PI * 2;
+        while (d < -Math.PI) d += Math.PI * 2;
+        e.yaw += Math.max(-9 * dt, Math.min(9 * dt, d));
         e.moving = true;
-      } else { e.v = 0; e.moving = false; }
+      } else {
+        e.v = 0;
+        e.moving = false;
+      }
 
       if (e.leaving) {
         if (dist < 0.5) e.wait -= dt;
-        if (e.wait <= 0) e.fade -= dt * 2.5;
-        if (e.fade <= 0) { this.people.delete(id); continue; }
-      } else {
-        e.fade = Math.min(1, (e.fade ?? 1) + dt * 5);
+        if (e.wait <= 0) e.fade -= dt * 2.2;
+        if (e.fade <= 0) {
+          this.people.delete(id);
+          continue;
+        }
       }
 
       const c = e.cls;
-      if (counts[c] >= PAX_CAP || total >= PAX_CAP) continue;
-      const bob = e.moving ? Math.abs(Math.sin(this.time * 9 + id)) * 0.04 : 0;
-      const s = Math.max(0.05, Math.min(1, e.fade));
       const i = counts[c];
-
-      m.compose(new THREE.Vector3(e.x, 0.22 + bob, e.z), new THREE.Quaternion(), new THREE.Vector3(s, s, s));
-      this.paxMesh[c].setMatrixAt(i, m);
-      m.compose(new THREE.Vector3(e.x, 0.22 + bob, e.z), new THREE.Quaternion(),
-        new THREE.Vector3(s * 1.06, s * 1.08, s * 1.06));
-      this.paxEdge.setMatrixAt(total, m);
-      m.compose(new THREE.Vector3(e.x, 0.58 + bob, e.z), new THREE.Quaternion(), new THREE.Vector3(s, s, s));
-      this.paxHead.setMatrixAt(total, m);
-      m.compose(new THREE.Vector3(e.x, 0.02, e.z), new THREE.Quaternion(), new THREE.Vector3(s, s, 1));
-      this.paxShadow.setMatrixAt(total, m);
-
+      if (i >= PAX_CAP) continue;
+      // toy-like walk: vertical bob, lateral sway and a forward lean
+      const phase = this.time * 9 + id * 0.7;
+      const bob = e.moving ? Math.abs(Math.sin(phase)) * 0.045 : 0;
+      const sway = e.moving ? Math.sin(phase * 0.5) * 0.05 : 0;
+      const lean = e.moving ? -0.09 : 0;
+      const variety = 0.94 + (((id * 13) % 7) / 7) * 0.12;
+      const scale = Math.max(0.05, Math.min(1, e.fade)) * variety;
+      // character models face -Z, so add PI to the heading
+      const heading = (e.yaw || 0) + Math.PI;
+      q.setFromEuler(new THREE.Euler(lean, heading, 0, "YXZ"));
+      const side = new THREE.Vector3(Math.cos(heading), 0, -Math.sin(heading)).multiplyScalar(sway);
+      m.compose(new THREE.Vector3(e.x + side.x, 0.01 + bob, e.z + side.z), q, new THREE.Vector3(scale, scale, scale));
+      if (this.paxInst) this.paxInst[c].set(i, m);
+      else this.paxMesh[c].setMatrixAt(i, m);
+      m.compose(new THREE.Vector3(e.x, 0.015, e.z), new THREE.Quaternion(), new THREE.Vector3(scale * 0.8, scale, 1));
+      this.paxShadow[c].setMatrixAt(i, m);
       counts[c]++;
-      total++;
     }
     for (let c = 0; c < 3; c++) {
-      this.paxMesh[c].count = counts[c];
-      this.paxMesh[c].instanceMatrix.needsUpdate = true;
+      if (this.paxInst) {
+        this.paxInst[c].count = counts[c];
+        this.paxInst[c].flush();
+      } else {
+        this.paxMesh[c].count = counts[c];
+        this.paxMesh[c].instanceMatrix.needsUpdate = true;
+      }
+      this.paxShadow[c].count = counts[c];
+      this.paxShadow[c].instanceMatrix.needsUpdate = true;
     }
-    this.paxEdge.count = total;
-    this.paxEdge.instanceMatrix.needsUpdate = true;
-    this.paxHead.count = total;
-    this.paxHead.instanceMatrix.needsUpdate = true;
-    this.paxShadow.count = total;
-    this.paxShadow.instanceMatrix.needsUpdate = true;
 
-    /* bay glow: occupied bays lift slightly */
-    if (this.bayMesh && this.metaFrame) {
-      const occupied = new Set();
-      for (const row of this.metaFrame.tx) if (row[2] === 2) occupied.add(`${row[4]}:${row[5]}`);
-      const c = new THREE.Color();
-      this.bayIndex.forEach((b, i) => {
-        this.bayMesh.setColorAt(i, c.setHex(occupied.has(`${b.id}:${b.idx}`) ? 0xffe9a8 : 0xe8e3d6));
-      });
-      this.bayMesh.instanceColor.needsUpdate = true;
+    /* --- clouds --- */
+    for (const c of this.clouds) {
+      c.sprite.position.x += c.speed * dt;
+      if (c.sprite.position.x > 78) c.sprite.position.x = -26;
+    }
+
+    /* --- ripples --- */
+    for (const r of this.rippleMeshes || []) {
+      if (r.life <= 0) continue;
+      r.life -= dt * 1.5;
+      const s = 1 + (1 - r.life) * 2.4;
+      r.mesh.scale.set(s, s, s);
+      r.mesh.material.opacity = Math.max(0, r.life) * 0.5;
+      if (r.life <= 0) r.mesh.visible = false;
+    }
+
+    /* --- bays + bottleneck --- */
+    const occupied = new Set();
+    for (const row of this.metaFrame?.tx || []) if (row[2] === 2) occupied.add(`${row[4]}:${row[5]}`);
+    for (const b of this.bayMeshes) {
+      b.mesh.material.emissiveIntensity = occupied.has(`${b.id}:${b.idx}`) ? 0.95 : 0.05;
+    }
+
+    const qs = this.metaFrame?.q || [0, 0, 0];
+    const worst = qs[0] >= qs[1] && qs[0] >= qs[2] ? 0 : qs[1] >= qs[2] ? 1 : 2;
+    for (let c = 0; c < 3; c++) {
+      if (this.laneGlow[c]) {
+        const target = c === worst && qs[c] > 8 ? 0.1 : 0.03;
+        const mat = this.laneGlow[c].material;
+        mat.opacity += (target - mat.opacity) * Math.min(1, dt * 3);
+      }
     }
   }
 
+  setHour(h) {
+    if (Math.abs(h - this.hour) < 0.2) return;
+    this.hour = h;
+    const t = Math.min(1, Math.max(0, (h - 8) / 12));
+    const day = Math.min(1, 0.6 + 0.7 * Math.sin(Math.PI * t));
+    const dusk = t > 0.72 ? (t - 0.72) / 0.28 : 0;
+
+    this.sun.intensity = 0.35 + 1.25 * day;
+    this.sun.color.setHSL(0.1, 0.45 * (1 - day) + 0.04, 0.66 + 0.1 * day);
+    this.hemi.intensity = 0.7 + 0.5 * day;
+    this.rim.intensity = 0.25 + 0.25 * day;
+
+    if (this.scene.fog) {
+      const fog = new THREE.Color(0x1b2b40).lerp(new THREE.Color(0x2c4257), day * 0.7);
+      fog.lerp(new THREE.Color(0x0a1018), dusk * 0.6);
+      this.scene.fog.color = fog;
+    }
+    if (this.windowMat) this.windowMat.emissiveIntensity = 0.45 + 0.85 * dusk;
+  }
+
   render(dt) {
-    const { theta, phi, zoom } = this.viewOffset;
-    const r = 70;
+    if (this.autoRotate) this.orbit.theta += (dt || 0.016) * 0.03;
+    const { theta, phi } = this.orbit;
+    const radius = this.orbit.radius * (this.portrait ? 1.0 : 1);
     this.camera.position.set(
-      this.target.x + r * Math.sin(phi) * Math.cos(theta),
-      this.target.y + r * Math.cos(phi),
-      this.target.z + r * Math.sin(phi) * Math.sin(theta)
+      this.target.x + radius * Math.sin(phi) * Math.cos(theta),
+      this.target.y + radius * Math.cos(phi),
+      this.target.z + radius * Math.sin(phi) * Math.sin(theta)
     );
     this.camera.lookAt(this.target);
-    this.camera.zoom = zoom;
-    this.camera.updateProjectionMatrix();
     this.renderer.render(this.scene, this.camera);
     this._updateLabels();
   }
