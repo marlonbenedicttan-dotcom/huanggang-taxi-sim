@@ -116,7 +116,7 @@ export class Scene3D {
     this.clouds = [];
 
     this.camera = new THREE.PerspectiveCamera(40, 1, 0.1, 400);
-    this.target = new THREE.Vector3(23, 1.0, 9.5);
+    this.target = new THREE.Vector3(24, 0.7, 9.0);
     this.orbit = { theta: Math.PI / 2 + 0.09, phi: 0.9, radius: 60 };
     this.autoRotate = false;
 
@@ -316,7 +316,7 @@ export class Scene3D {
       this.wasPortrait = portrait;
       this.orbit = portrait
         ? { theta: 2.62, phi: 0.8, radius: 96 }
-        : { theta: Math.PI / 2 + 0.1, phi: 0.82, radius: 58 };
+        : { theta: Math.PI / 2 + 0.1, phi: 0.86, radius: 54 };
     }
     this.portrait = portrait;
     this.camera.fov = portrait ? 50 : 40;
@@ -463,10 +463,14 @@ export class Scene3D {
         this.root.add(edge);
       }
 
-      // coloured glow used to mark the bottleneck
+      // soft heat-glow marking the bottleneck; a flat plane read as painted
+      // tarmac, a radial falloff reads as light pooling on the surface
       const glow = new THREE.Mesh(
         new THREE.PlaneGeometry(50, 4.9),
-        new THREE.MeshBasicMaterial({ color: CLS_COLOR[id], transparent: true, opacity: 0.03, depthWrite: false })
+        new THREE.MeshBasicMaterial({
+          color: CLS_COLOR[id], map: glowTexture(),
+          transparent: true, opacity: 0.02, depthWrite: false,
+        })
       );
       glow.rotation.x = -Math.PI / 2;
       glow.position.set(23, 0.008, y);
@@ -486,9 +490,9 @@ export class Scene3D {
       for (let idx = 0; idx < slots.length; idx++) {
         const [x, y] = slots[idx];
         const mat = new THREE.MeshStandardMaterial({
-          color: 0xf2f4f6,
+          color: 0xe9edf1,
           emissive: new THREE.Color(CLS_COLOR[id]),
-          emissiveIntensity: 0.06,
+          emissiveIntensity: 0.02,
           roughness: 0.85,
         });
         const m = new THREE.Mesh(box(1.9, 0.1, 1.0), mat);
@@ -506,11 +510,11 @@ export class Scene3D {
     // pedestrian crossing from the terminal doors to the waiting area
     for (let i = 0; i < 7; i++) {
       const bar = new THREE.Mesh(
-        new THREE.PlaneGeometry(0.85, 3.0),
+        new THREE.PlaneGeometry(0.8, 5.4),
         new THREE.MeshBasicMaterial({ color: 0xf4f2ea, transparent: true, opacity: 0.75, depthWrite: false })
       );
       bar.rotation.x = -Math.PI / 2;
-      bar.position.set(15.4 + i * 1.15, 0.018, -0.9);
+      bar.position.set(15.4 + i * 1.05, 0.018, -0.2);
       this.root.add(bar);
     }
 
@@ -555,9 +559,9 @@ export class Scene3D {
       hedge.push([x, 0.28, -11.4]);
       hedge.push([x, 0.28, 37]);
     }
-    // distant treeline behind the terminal and beyond the road
+    // treeline only on the near side of the road: anything behind the terminal
+    // projects above its roof and reads as a row of floating cones
     for (let x = -20; x <= 66; x += 7.5) {
-      trees.push([x, 1.4, -34 - ((x % 7) * 0.6)]);
       trees.push([x + 3, 1.2, 54 + ((x % 5) * 0.7)]);
     }
 
@@ -869,10 +873,11 @@ export class Scene3D {
 
     // trees along both edges and behind the building
     // trees are 1.9 units tall at scale 1; keep them well below the buildings
+    // Only plant where the camera can actually see the trunk. Anything behind
+    // the terminal projects above the roofline and reads as a floating cone.
     const treeSpots = [
-      [-9, 12, 0.85], [-9, 20, 0.7], [-9, 28, 0.9],
-      [57, 12, 0.8], [57, 22, 0.85], [57, 30, 0.7],
-      [6, -14, 0.95], [30, -14, 0.85], [46, -14, 0.9],
+      [-10.5, 6, 1.0], [-10.5, 18, 0.82], [-10.5, 27, 0.94],
+      [58, 8, 0.9], [58, 17, 1.05], [58, 26, 0.78],
     ];
     for (const [x, z, sc] of treeSpots) {
       this.addModel(A.trees[(x + z) % A.trees.length], x, z, (x + z) * 0.7, sc);
@@ -1189,7 +1194,7 @@ export class Scene3D {
     const worst = qs[0] >= qs[1] && qs[0] >= qs[2] ? 0 : qs[1] >= qs[2] ? 1 : 2;
     for (let c = 0; c < 3; c++) {
       if (this.laneGlow[c]) {
-        const target = c === worst && qs[c] > 8 ? 0.1 : 0.03;
+        const target = c === worst && qs[c] > 8 ? 0.16 : 0.02;
         const mat = this.laneGlow[c].material;
         mat.opacity += (target - mat.opacity) * Math.min(1, dt * 3);
       }
