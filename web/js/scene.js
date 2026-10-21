@@ -821,7 +821,7 @@ export class Scene3D {
       if (!e) {
         // enter from the approach road, then swing into the buffer lane
         e = {
-          x: -14, z: 25.4, yaw: 0, v: 0, cls: clsId, exiting: false,
+          x: -14, z: 25.4, yaw: 0, v: 0, cls: clsId, exiting: false, fade: 0,
           wp: { x: -3.0, z: 22.6 },
         };
         this.taxis.set(id, e);
@@ -839,7 +839,7 @@ export class Scene3D {
       let e = this.people.get(id);
       if (!e) {
         const [dx, dy] = doorPos(clsId);
-        e = { x: dx, z: dy, yaw: 0, v: 0, cls: clsId, leaving: false, fade: 1, wait: 0 };
+        e = { x: dx, z: dy, yaw: 0, v: 0, cls: clsId, leaving: false, fade: 0, wait: 0 };
         this.people.set(id, e);
         this._ripple(dx, dy, CLS_COLOR[clsId]);
       }
@@ -921,6 +921,9 @@ export class Scene3D {
         e.v = 0;
       }
 
+      e.fade = Math.min(1, (e.fade ?? 1) + dt * 3.5);
+      const grow = 0.6 + 0.4 * e.fade;
+
       if (e.exiting === "exit" && dist < 0.4) {
         this.taxis.delete(id);
         continue;
@@ -928,7 +931,7 @@ export class Scene3D {
       if (n >= TAXI_CAP) break;
 
       q.setFromAxisAngle(up, e.yaw || 0);
-      m.compose(new THREE.Vector3(e.x, 0.02, e.z), q, new THREE.Vector3(1, 1, 1));
+      m.compose(new THREE.Vector3(e.x, 0.02, e.z), q, new THREE.Vector3(grow, grow, grow));
       if (this.taxiInst) {
         this.taxiInst.set(n, m);
       } else {
@@ -1005,6 +1008,7 @@ export class Scene3D {
       const bob = e.moving ? Math.abs(Math.sin(phase)) * 0.045 : 0;
       const sway = e.moving ? Math.sin(phase * 0.5) * 0.05 : 0;
       const lean = e.moving ? -0.09 : 0;
+      e.fade = Math.min(1, (e.fade ?? 1) + dt * 4);
       const variety = 0.94 + (((id * 13) % 7) / 7) * 0.12;
       const scale = Math.max(0.05, Math.min(1, e.fade)) * variety;
       // character models face -Z, so add PI to the heading
