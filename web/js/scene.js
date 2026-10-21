@@ -120,20 +120,20 @@ export class Scene3D {
         p.x = e.clientX;
         p.y = e.clientY;
         if (pinch > 0) {
-          this.viewOffset.zoom = Math.min(2.6, Math.max(0.6, (startZoom * dist()) / pinch));
+          this.viewOffset.zoom = Math.min(1.7, Math.max(0.75, (startZoom * dist()) / pinch));
         }
         return;
       }
       // rotate the isometric angle in 90°-ish steps for a clean look
       this.viewOffset.theta -= (e.clientX - p.lx) * 0.006;
-      this.viewOffset.phi = Math.min(1.25, Math.max(0.55, this.viewOffset.phi - (e.clientY - p.ly) * 0.004));
+      this.viewOffset.phi = Math.min(1.05, Math.max(0.78, this.viewOffset.phi - (e.clientY - p.ly) * 0.003));
       p.lx = e.clientX;
       p.ly = e.clientY;
     }, { passive: true });
 
     this.canvas.addEventListener("wheel", (e) => {
       e.preventDefault();
-      this.viewOffset.zoom = Math.min(2.6, Math.max(0.6, this.viewOffset.zoom - e.deltaY * 0.0012));
+      this.viewOffset.zoom = Math.min(1.7, Math.max(0.75, this.viewOffset.zoom - e.deltaY * 0.0012));
     }, { passive: false });
 
     let lastTap = 0;
@@ -168,7 +168,7 @@ export class Scene3D {
     const h = this.canvas.clientHeight || 600;
     this.renderer.setSize(w, h, false);
     this.portrait = h > w;
-    const size = this.portrait ? 96 : 72;
+    const size = this.portrait ? 92 : 66;
     this.camera.left = -size / 2;
     this.camera.right = size / 2;
     this.camera.top = size / 2;
@@ -183,6 +183,19 @@ export class Scene3D {
       new THREE.MeshLambertMaterial({ color, flatShading: true, ...opts })
     );
     return m;
+  }
+
+  /** One draw call for a repeated static prop. */
+  addInstanced(geo, material, spots) {
+    const mesh = new THREE.InstancedMesh(geo, material, spots.length);
+    const m = new THREE.Matrix4();
+    spots.forEach(([x, y, z, s = 1], i) => {
+      m.compose(new THREE.Vector3(x, y, z), new THREE.Quaternion(), new THREE.Vector3(s, s, s));
+      mesh.setMatrixAt(i, m);
+    });
+    mesh.instanceMatrix.needsUpdate = true;
+    this.root.add(mesh);
+    return mesh;
   }
 
   /** Baked-looking contact shadow: a flat dark disc under an object. */
@@ -239,12 +252,7 @@ export class Scene3D {
       for (const dz of [-2.5, 2.5]) {
         this.root.add(this.plain(50, 0.2, CLS_COLOR[id], 23, 0.02, y + dz));
       }
-      const sign = this.label(LANE_TITLE[id], "#ffffff", 0.5);
-      sign.position.set(4.5, 2.2, y - 3.1);
-      this.root.add(sign);
-      const shadow = this.shadowMesh(1.4, 0.1);
-      shadow.position.set(4.5, 0.03, y - 3.1);
-      this.root.add(shadow);
+      // lane names live in the HTML counters; painted kerbs carry the colour
     }
 
     // approach road in front
@@ -253,15 +261,15 @@ export class Scene3D {
       this.root.add(this.plain(2.2, 0.16, C.white, x, 0.022, 25.4));
     }
 
+    this._buildBuffer();
     this._buildBays();
     this._buildTerminal();
     this._buildTrees();
     this._buildFurniture();
     this._buildPools();
 
-    const t = this.label("BUFFER ZONE", "#2f3a45", 0.42);
-    t.position.set(7.5, 0.9, -2.6);
-    this.root.add(t);
+    this._buildBayCanopy();
+    this._buildMarkings();
   }
 
   plain(w, d, color, x, y, z) {
@@ -274,42 +282,94 @@ export class Scene3D {
     return m;
   }
 
+  /** The waiting area: a lighter apron with painted slots, so taxis queue on
+   *  something rather than an empty grey rectangle. */
+  _buildBuffer() {
+    const flat = (c) => new THREE.MeshLambertMaterial({ color: c, flatShading: true });
+    const lines = [];
+    const floors = [];
+
+    for (const id of [0, 1, 2]) {
+      const y = LANES[CLS[id]];
+      floors.push(this.plain(11.5, 5.0, 0x76808c, 7.0, 0.008, y));
+
+      for (let i = 0; i < 24; i++) {
+        const [bx, bz] = bufferPos(id, i);
+        // two short strokes per slot read as a painted parking bay
+        lines.push([bx - 0.42, 0.02, bz - 0.3], [bx + 0.42, 0.02, bz - 0.3]);
+        lines.push([bx - 0.42, 0.02, bz + 0.3], [bx + 0.42, 0.02, bz + 0.3]);
+      }
+    }
+
+    this.addInstanced(new THREE.BoxGeometry(0.84, 0.02, 0.05), flat(0xd8dee6), lines);
+
+    const tag = this.label("WAITING AREA", "#2f3a45", 0.34);
+    tag.position.set(7.0, 0.9, -3.2);
+    this.root.add(tag);
+  }
+
   _buildBays() {
+    const spots = [];
+    this.bayIndex = [];
     for (const gid of this.meta.groups) {
       const id = ["urban", "nt", "prebook", "pool"].indexOf(gid);
       if (id < 0) continue;
-      const slots = baySlots(id);
-      slots.forEach(([x, z], i) => {
-        const pad = this.box(1.9, 0.08, 1.0, 0xe8e3d6);
-        pad.position.set(x, 0.04, z);
-        this.root.add(pad);
-        this.bayMeshes.push({ mesh: pad, id, idx: i, base: 0xe8e3d6 });
+      baySlots(id).forEach(([x, z], i) => {
+        spots.push([x, 0.04, z]);
+        this.bayIndex.push({ id, idx: i });
       });
     }
+    if (!spots.length) return;
+
+    const geo = new THREE.BoxGeometry(1.9, 0.08, 1.0);
+    const mat = new THREE.MeshLambertMaterial({ color: 0xffffff, flatShading: true });
+    const mesh = new THREE.InstancedMesh(geo, mat, spots.length);
+    mesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(spots.length * 3), 3);
+    const m = new THREE.Matrix4();
+    const c = new THREE.Color();
+    spots.forEach(([x, y, z], i) => {
+      m.makeTranslation(x, y, z);
+      mesh.setMatrixAt(i, m);
+      mesh.setColorAt(i, c.setHex(0xe8e3d6));
+    });
+    mesh.instanceMatrix.needsUpdate = true;
+    mesh.instanceColor.needsUpdate = true;
+    this.root.add(mesh);
+    this.bayMesh = mesh;
   }
 
   _buildTerminal() {
     const T = TERMINAL;
 
     // main hall: a long block with a coloured roof
-    const hall = this.box(40, 5.2, 6, C.wall);
-    hall.position.set(22, 2.6, T.y - 1.5);
+    const hall = this.box(40, 4.1, 6, C.wall);
+    hall.position.set(22, 2.05, T.y - 3.0);
     this.root.add(hall);
 
-    const roof = this.box(41, 0.5, 7, C.roofA);
-    roof.position.set(22, 5.45, T.y - 1.5);
+    const roof = this.box(41, 0.45, 6.6, C.roofA);
+    roof.position.set(22, 4.32, T.y - 3.0);
     this.root.add(roof);
 
     // window bands
-    for (const y of [1.5, 3.6]) {
+    for (const y of [1.3, 3.0]) {
       const band = this.box(38, 0.75, 0.1, C.glass);
-      band.position.set(22, y, T.y + 1.55);
+      band.position.set(22, y, T.y + 0.05);
       this.root.add(band);
+    }
+
+    // recessed entrance
+    const recess = this.box(9.0, 3.0, 2.6, 0x3a4652);
+    recess.position.set(17.6, 1.5, T.y - 0.6);
+    this.root.add(recess);
+    for (let i = 0; i < 2; i++) {
+      const step = this.box(9.4 - i * 0.5, 0.16, 0.6, C.kerb);
+      step.position.set(17.6, 0.08 + i * 0.16, T.y + 1.3 + i * 0.55);
+      this.root.add(step);
     }
 
     // entrance canopy
     const canopy = this.box(13, 0.3, 3.2, C.roofB);
-    canopy.position.set(17.6, 3.3, T.y + 3.4);
+    canopy.position.set(17.6, 3.3, T.y + 2.2);
     this.root.add(canopy);
     for (const x of [11.6, 23.6]) {
       const col = this.box(0.5, 3.3, 0.5, C.kerb);
@@ -318,11 +378,11 @@ export class Scene3D {
     }
 
     // sign board above the entrance
-    const board = this.box(11, 1.3, 0.25, C.white);
-    board.position.set(17.6, 4.6, T.y + 1.7);
+    const board = this.box(11, 1.2, 0.25, C.white);
+    board.position.set(17.6, 5.35, T.y - 0.2);
     this.root.add(board);
-    const sign = this.label("HUANGGANG PORT", "#22303c", 0.62);
-    sign.position.set(17.6, 4.6, T.y + 1.9);
+    const sign = this.label("HUANGGANG PORT", "#22303c", 0.58);
+    sign.position.set(17.6, 5.35, T.y + 0.02);
     this.root.add(sign);
 
     // a second row of blocks for skyline depth
@@ -345,6 +405,60 @@ export class Scene3D {
     }
   }
 
+  /** A roof over the pickup bays, so the rank reads as infrastructure. */
+  _buildBayCanopy() {
+    const flat = (c) => new THREE.MeshLambertMaterial({ color: c, flatShading: true });
+    const posts = [];
+    for (const x of [34.2, 42.2]) {
+      for (let z = 1; z <= 22; z += 4.2) posts.push([x, 1.6, z]);
+    }
+    this.addInstanced(new THREE.BoxGeometry(0.22, 3.2, 0.22), flat(0xe9e4d6), posts);
+
+    const roof = this.box(8.6, 0.24, 22, C.white);
+    roof.position.set(38.0, 3.75, 11.5);
+    this.root.add(roof);
+
+    // coloured fascia so the roof reads as a structure, not a blank card
+    const trim = this.box(8.8, 0.5, 0.35, C.roofB);
+    trim.position.set(38.0, 3.55, 0.5);
+    this.root.add(trim);
+    const trim2 = this.box(8.8, 0.5, 0.35, C.roofB);
+    trim2.position.set(38.0, 3.55, 22.5);
+    this.root.add(trim2);
+
+    // chevrons on the tarmac leading into the bays
+    const marks = [];
+    for (let z = 2; z <= 21; z += 3.2) marks.push([32.4, 0.02, z]);
+    this.addInstanced(new THREE.BoxGeometry(0.9, 0.02, 0.16), flat(0xd8dee6), marks);
+
+    const tag = this.label("PICKUP BAYS", "#2f3a45", 0.34);
+    tag.position.set(38.2, 3.9, -0.6);
+    this.root.add(tag);
+  }
+
+  /** Extra ground detail so the apron is not a blank grey field. */
+  _buildMarkings() {
+    const flat = (c) => new THREE.MeshLambertMaterial({ color: c, flatShading: true });
+
+    // pedestrian crossing between the terminal and the rank
+    const stripes = [];
+    for (let z = -0.2; z <= 22; z += 1.6) stripes.push([30.2, 0.02, z]);
+    this.addInstanced(new THREE.BoxGeometry(1.6, 0.02, 0.8), flat(0xe8eef5), stripes);
+
+    // a taxi rank arrow painted on each lane approach
+    const arrows = [];
+    for (const id of [0, 1, 2]) {
+      const y = LANES[CLS[id]];
+      for (const x of [15.5, 18, 20.5]) arrows.push([x, 0.02, y]);
+    }
+    this.addInstanced(new THREE.BoxGeometry(1.1, 0.02, 0.9), flat(0xdfe6ee), arrows);
+
+    // curb along the frontage
+    const kerb = this.box(52, 0.22, 0.4, C.kerb);
+    kerb.position.set(22, 0.11, -0.9);
+    this.root.add(kerb);
+  }
+
   _buildTrees() {
     const spots = [
       [-6, 4], [-6, 14], [-6, 24], [-6, 32],
@@ -352,62 +466,39 @@ export class Scene3D {
       [-2, -10], [12, -10], [26, -10], [40, -10],
       [56, -10], [10, 34], [34, 34], [46, 34],
     ];
-    for (const [x, z] of spots) {
-      const trunk = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.16, 0.2, 1.0, 6),
-        new THREE.MeshLambertMaterial({ color: C.trunk, flatShading: true })
-      );
-      trunk.position.set(x, 0.5, z);
-      this.root.add(trunk);
+    const flat = (c) => new THREE.MeshLambertMaterial({ color: c, flatShading: true });
 
-      const c1 = new THREE.Mesh(
-        new THREE.ConeGeometry(0.85, 1.5, 7),
-        new THREE.MeshLambertMaterial({ color: C.leaf, flatShading: true })
-      );
-      c1.position.set(x, 1.6, z);
-      this.root.add(c1);
-
-      const c2 = new THREE.Mesh(
-        new THREE.ConeGeometry(0.62, 1.1, 7),
-        new THREE.MeshLambertMaterial({ color: C.leafAlt, flatShading: true })
-      );
-      c2.position.set(x, 2.3, z);
-      this.root.add(c2);
-
-      const sh = this.shadowMesh(0.95, 0.14);
-      sh.position.set(x, 0.02, z);
-      this.root.add(sh);
-    }
+    this.addInstanced(new THREE.CylinderGeometry(0.16, 0.2, 1.0, 6), flat(C.trunk),
+      spots.map(([x, z]) => [x, 0.5, z]));
+    this.addInstanced(new THREE.ConeGeometry(0.85, 1.5, 7), flat(C.leaf),
+      spots.map(([x, z]) => [x, 1.6, z]));
+    this.addInstanced(new THREE.ConeGeometry(0.62, 1.1, 7), flat(C.leafAlt),
+      spots.map(([x, z]) => [x, 2.3, z]));
+    this.addInstanced(new THREE.CircleGeometry(0.95, 10),
+      new THREE.MeshBasicMaterial({ color: 0x1d2a24, transparent: true, opacity: 0.14, depthWrite: false }),
+      spots.map(([x, z]) => [x, 0.02, z]));
   }
 
   _buildFurniture() {
-    // benches, bins, lamps, railings along the terminal frontage
-    for (let x = 4; x <= 44; x += 8) {
-      const seat = this.box(1.7, 0.14, 0.55, 0xb98a5e);
-      seat.position.set(x, 0.42, -1.4);
-      this.root.add(seat);
-      const back = this.box(1.7, 0.5, 0.12, 0xb98a5e);
-      back.position.set(x, 0.72, -1.66);
-      this.root.add(back);
+    const flat = (c) => new THREE.MeshLambertMaterial({ color: c, flatShading: true });
 
-      const bin = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.2, 0.18, 0.6, 8),
-        new THREE.MeshLambertMaterial({ color: 0x3f8f5a, flatShading: true })
-      );
-      bin.position.set(x + 2.5, 0.3, -1.2);
-      this.root.add(bin);
-    }
+    // benches + bins along the frontage
+    const benchX = [];
+    for (let x = 4; x <= 44; x += 8) benchX.push(x);
+    this.addInstanced(new THREE.BoxGeometry(1.7, 0.14, 0.55), flat(0xb98a5e),
+      benchX.map((x) => [x, 0.42, -1.4]));
+    this.addInstanced(new THREE.BoxGeometry(1.7, 0.5, 0.12), flat(0xb98a5e),
+      benchX.map((x) => [x, 0.72, -1.66]));
+    this.addInstanced(new THREE.CylinderGeometry(0.2, 0.18, 0.6, 8), flat(0x3f8f5a),
+      benchX.map((x) => [x + 2.5, 0.3, -1.2]));
 
-    for (const x of [10, 22, 34]) {
-      for (const z of [2.2, 12, 21]) {
-        const post = this.box(0.12, 2.6, 0.12, 0x8d98a5);
-        post.position.set(x, 1.3, z);
-        this.root.add(post);
-        const head = this.box(0.3, 0.18, 0.3, 0xfff3c4);
-        head.position.set(x, 2.68, z);
-        this.root.add(head);
-      }
-    }
+    // lamp posts
+    const lamps = [];
+    for (const x of [10, 22, 34]) for (const z of [2.2, 12, 21]) lamps.push([x, z]);
+    this.addInstanced(new THREE.BoxGeometry(0.12, 2.6, 0.12), flat(0x8d98a5),
+      lamps.map(([x, z]) => [x, 1.3, z]));
+    this.addInstanced(new THREE.BoxGeometry(0.34, 0.2, 0.34), flat(0xfff3c4),
+      lamps.map(([x, z]) => [x, 2.68, z]));
 
     // queue railings
     const rail = [];
@@ -417,11 +508,8 @@ export class Scene3D {
         for (let x = 12.8; x <= 24; x += 2.8) rail.push([x, y + dz]);
       }
     }
-    for (const [x, z] of rail) {
-      const p = this.box(0.07, 0.7, 0.07, 0x9aa6b2);
-      p.position.set(x, 0.35, z);
-      this.root.add(p);
-    }
+    this.addInstanced(new THREE.BoxGeometry(0.07, 0.7, 0.07), flat(0x9aa6b2),
+      rail.map(([x, z]) => [x, 0.35, z]));
   }
 
   /* ---------------- instanced entities ---------------- */
@@ -453,9 +541,9 @@ export class Scene3D {
 
     // person: coloured body + skin head
     this.paxMesh = [0, 1, 2].map((c) =>
-      this._pool(new THREE.BoxGeometry(0.24, 0.3, 0.2), mat(CLS_COLOR[c]), PAX_CAP)
+      this._pool(new THREE.BoxGeometry(0.34, 0.44, 0.28), mat(CLS_COLOR[c]), PAX_CAP)
     );
-    this.paxHead = this._pool(new THREE.BoxGeometry(0.18, 0.18, 0.18), mat(0xf0c39a), PAX_CAP);
+    this.paxHead = this._pool(new THREE.BoxGeometry(0.26, 0.26, 0.26), mat(0xf0c39a), PAX_CAP);
     this.paxShadow = this._pool(new THREE.CircleGeometry(0.16, 10), new THREE.MeshBasicMaterial({
       color: 0x1d2a24, transparent: true, opacity: 0.16, depthWrite: false,
     }), PAX_CAP);
@@ -525,6 +613,7 @@ export class Scene3D {
       }
       e.tx = x;
       e.tz = z;
+      e.parked = state === 2;
       e.exiting = false;
     }
 
@@ -589,7 +678,9 @@ export class Scene3D {
         const step = Math.min(dist, e.v * dt);
         e.x += (dx / dist) * step;
         e.z += (dz / dist) * step;
-        const yaw = Math.atan2(dz, dx);
+        // at a bay the taxi squares up to the kerb instead of keeping its
+        // approach angle (that was reading as a car park)
+        const yaw = e.parked && dist < 1.2 ? 0 : Math.atan2(dz, dx);
         let d = yaw - e.yaw;
         while (d > Math.PI) d -= Math.PI * 2;
         while (d < -Math.PI) d += Math.PI * 2;
@@ -651,9 +742,9 @@ export class Scene3D {
       const s = Math.max(0.05, Math.min(1, e.fade));
       const i = counts[c];
 
-      m.compose(new THREE.Vector3(e.x, 0.15 + bob, e.z), new THREE.Quaternion(), new THREE.Vector3(s, s, s));
+      m.compose(new THREE.Vector3(e.x, 0.22 + bob, e.z), new THREE.Quaternion(), new THREE.Vector3(s, s, s));
       this.paxMesh[c].setMatrixAt(i, m);
-      m.compose(new THREE.Vector3(e.x, 0.36 + bob, e.z), new THREE.Quaternion(), new THREE.Vector3(s, s, s));
+      m.compose(new THREE.Vector3(e.x, 0.58 + bob, e.z), new THREE.Quaternion(), new THREE.Vector3(s, s, s));
       this.paxHead.setMatrixAt(total, m);
       m.compose(new THREE.Vector3(e.x, 0.02, e.z), new THREE.Quaternion(), new THREE.Vector3(s, s, 1));
       this.paxShadow.setMatrixAt(total, m);
@@ -671,10 +762,14 @@ export class Scene3D {
     this.paxShadow.instanceMatrix.needsUpdate = true;
 
     /* bay glow: occupied bays lift slightly */
-    const occupied = new Set();
-    for (const row of this.metaFrame?.tx || []) if (row[2] === 2) occupied.add(`${row[4]}:${row[5]}`);
-    for (const b of this.bayMeshes) {
-      b.mesh.material.color.setHex(occupied.has(`${b.id}:${b.idx}`) ? 0xfff0c2 : b.base);
+    if (this.bayMesh && this.metaFrame) {
+      const occupied = new Set();
+      for (const row of this.metaFrame.tx) if (row[2] === 2) occupied.add(`${row[4]}:${row[5]}`);
+      const c = new THREE.Color();
+      this.bayIndex.forEach((b, i) => {
+        this.bayMesh.setColorAt(i, c.setHex(occupied.has(`${b.id}:${b.idx}`) ? 0xffe9a8 : 0xe8e3d6));
+      });
+      this.bayMesh.instanceColor.needsUpdate = true;
     }
   }
 

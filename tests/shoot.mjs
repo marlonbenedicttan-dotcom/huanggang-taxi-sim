@@ -25,7 +25,7 @@ await page.waitForFunction(
   () => (document.querySelector("#hint")?.textContent || "").includes("frames"),
   { timeout: 20000 }
 );
-await page.waitForTimeout(800);
+await page.waitForTimeout(3000);
 await page.evaluate(() => window.__sim.settle?.(4));   // walkers reach their spots
 await page.waitForTimeout(400);
 await page.screenshot({ path: out });
