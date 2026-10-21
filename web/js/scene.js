@@ -315,8 +315,8 @@ export class Scene3D {
     if (this.wasPortrait !== portrait) {
       this.wasPortrait = portrait;
       this.orbit = portrait
-        ? { theta: 2.72, phi: 0.82, radius: 68 }
-        : { theta: Math.PI / 2 + 0.1, phi: 0.78, radius: 52 };
+        ? { theta: 2.62, phi: 0.8, radius: 96 }
+        : { theta: Math.PI / 2 + 0.1, phi: 0.82, radius: 58 };
     }
     this.portrait = portrait;
     this.camera.fov = portrait ? 50 : 40;
@@ -327,6 +327,27 @@ export class Scene3D {
   }
 
   /* ---------------- text sprite ---------------- */
+  /** Text painted flat on the ground (rank numbers, road markings). */
+  groundLabel(text, color = "#ffffff", size = 0.5, opacity = 0.6) {
+    const c = document.createElement("canvas");
+    c.width = c.height = 96;
+    const g = c.getContext("2d");
+    g.fillStyle = color;
+    g.font = "700 62px -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif";
+    g.textAlign = "center";
+    g.textBaseline = "middle";
+    g.fillText(text, 48, 52);
+    const tex = new THREE.CanvasTexture(c);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.anisotropy = 4;
+    const mesh = new THREE.Mesh(
+      new THREE.PlaneGeometry(size, size),
+      new THREE.MeshBasicMaterial({ map: tex, transparent: true, opacity, depthWrite: false })
+    );
+    mesh.rotation.x = -Math.PI / 2;
+    return mesh;
+  }
+
   label(text, color = "#c8d4e6", size = 0.6, plate = null) {
     const font = "700 54px -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif";
     const probe = document.createElement("canvas").getContext("2d");
@@ -474,7 +495,23 @@ export class Scene3D {
         m.position.set(x, 0.05, y);
         this.root.add(m);
         this.bayMeshes.push({ mesh: m, id, idx });
+
+        // rank number painted on the pad
+        const num = this.groundLabel(String(idx + 1), "#8b98a5", 0.34);
+        num.position.set(x - 0.62, 0.107, y + 0.22);
+        this.root.add(num);
       }
+    }
+
+    // pedestrian crossing from the terminal doors to the waiting area
+    for (let i = 0; i < 7; i++) {
+      const bar = new THREE.Mesh(
+        new THREE.PlaneGeometry(0.85, 3.0),
+        new THREE.MeshBasicMaterial({ color: 0xf4f2ea, transparent: true, opacity: 0.75, depthWrite: false })
+      );
+      bar.rotation.x = -Math.PI / 2;
+      bar.position.set(15.4 + i * 1.15, 0.018, -0.9);
+      this.root.add(bar);
     }
 
     this._buildLandscape();
@@ -839,6 +876,11 @@ export class Scene3D {
     ];
     for (const [x, z, sc] of treeSpots) {
       this.addModel(A.trees[(x + z) % A.trees.length], x, z, (x + z) * 0.7, sc);
+      const sh = new THREE.Mesh(this.geo.shadow, this.mat.shadow);
+      sh.rotation.x = -Math.PI / 2;
+      sh.scale.setScalar(1.5 + sc * 1.6);
+      sh.position.set(x, 0.008, z);
+      this.root.add(sh);
     }
 
     // planters along the terminal kerb
