@@ -16,7 +16,7 @@ import {
   CLS, CLS_COLOR, LANES, EXIT_X, TAXI, TERMINAL,
   bufferPos, standPos, bayPos, queuePos, baySlots, doorPos,
 } from "./layout.js";
-import { glowTexture, signTexture } from "./textures.js";
+import { glowTexture, signTexture, daySkyTexture, cloudTexture } from "./textures.js";
 import { instances } from "./assets.js";
 
 const TAXI_CAP = 72;
@@ -108,8 +108,9 @@ export class Scene3D {
     this.renderer.toneMappingExposure = 1.08;
 
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0xdbe7ee);
-    this.scene.fog = new THREE.Fog(0xdbe7ee, 230, 340);
+    this.scene.background = daySkyTexture();
+    this.scene.fog = new THREE.Fog(0xe3eef5, 190, 320);
+    this.clouds = [];
 
     this.camera = new THREE.PerspectiveCamera(40, 1, 0.1, 400);
     this.target = new THREE.Vector3(22, 1.2, 11);
@@ -183,6 +184,17 @@ export class Scene3D {
     this.paxInst = A?.people ? A.people.map((p) => instances(p, PAX_CAP, this.root)) : null;
 
     this.taxiShadow = this._pool(this.geo.shadow, this.mat.shadow, TAXI_CAP);
+    // coloured roof sign: carries the class colour now that the taxi is a model
+    this.signMesh = new THREE.InstancedMesh(
+      new THREE.BoxGeometry(0.34, 0.11, 0.2),
+      new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xffffff, emissiveIntensity: 0.45, roughness: 0.5 }),
+      TAXI_CAP
+    );
+    this.signMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    this.signMesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(TAXI_CAP * 3), 3);
+    this.signMesh.frustumCulled = false;
+    this.signMesh.count = 0;
+    this.root.add(this.signMesh);
     this.paxShadow = [0, 1, 2].map(() => this._pool(this.geo.blob, this.mat.shadow, PAX_CAP));
 
     if (this.taxiInst && this.paxInst) return;   // models cover everything
@@ -284,7 +296,7 @@ export class Scene3D {
     this.quality = q;
     this.maxDpr = q === "low" ? 1 : 1.75;
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, this.maxDpr));
-    this.scene.fog = q === "low" ? null : new THREE.Fog(0xdbe7ee, 230, 340);
+    this.scene.fog = q === "low" ? null : new THREE.Fog(0xe3eef5, 190, 320);
     this.resize();
   }
 
@@ -298,7 +310,7 @@ export class Scene3D {
     if (this.wasPortrait !== portrait) {
       this.wasPortrait = portrait;
       this.orbit = portrait
-        ? { theta: 2.78, phi: 0.94, radius: 46 }
+        ? { theta: 2.72, phi: 0.82, radius: 68 }
         : { theta: Math.PI / 2 + 0.1, phi: 0.78, radius: 52 };
     }
     this.portrait = portrait;
@@ -417,6 +429,8 @@ export class Scene3D {
     this._buildTerminal();
     this._buildRoad();
     this._buildProps();
+    this._buildSky();
+    this._buildStreetFurniture();
     this._buildAssets();
     this._buildPools();
 
@@ -489,6 +503,80 @@ export class Scene3D {
         this.root.add(lamp);
       }
     }
+  }
+
+  /** Drifting billboard clouds above the terminal. */
+  _buildSky() {
+    this.clouds.forEach((c) => this.root.remove(c.sprite));
+    this.clouds = [];
+    if (this.quality === "low") return;
+    const tex = cloudTexture();
+    const spots = [
+      [-14, 13, -30, 16], [8, 16, -38, 20], [28, 12, -34, 15],
+      [46, 17, -42, 22], [62, 14, -30, 17], [20, 19, -50, 24],
+    ];
+    for (const [x, y, z, scale] of spots) {
+      const sprite = new THREE.Sprite(
+        new THREE.SpriteMaterial({ map: tex, transparent: true, opacity: 0.85, depthWrite: false })
+      );
+      sprite.position.set(x, y, z);
+      sprite.scale.set(scale, scale * 0.5, 1);
+      this.root.add(sprite);
+      this.clouds.push({ sprite, speed: 0.15 + Math.random() * 0.2 });
+    }
+  }
+
+  /** Benches, bins, a shelter and a ticket machine — the street-level detail. */
+  _buildStreetFurniture() {
+    if (this.quality === "low") return;
+    const wood = new THREE.MeshStandardMaterial({ color: 0xb98a5e, roughness: 0.85 });
+    const metal = new THREE.MeshStandardMaterial({ color: 0x8d9aa8, roughness: 0.6, metalness: 0.25 });
+    const green = new THREE.MeshStandardMaterial({ color: 0x2f8f7a, roughness: 0.8 });
+    const glass = new THREE.MeshStandardMaterial({ color: 0xbfe0ea, transparent: true, opacity: 0.45, roughness: 0.2 });
+
+    const z0 = TERMINAL.y + TERMINAL.depth / 2 + 5.2;
+    for (let x = 4; x <= 44; x += 8) {
+      // bench
+      const seat = new THREE.Mesh(box(1.6, 0.1, 0.5), wood);
+      seat.position.set(x, 0.42, z0);
+      this.root.add(seat);
+      const back = new THREE.Mesh(box(1.6, 0.45, 0.09), wood);
+      back.position.set(x, 0.66, z0 - 0.22);
+      this.root.add(back);
+      for (const dx of [-0.6, 0.6]) {
+        const leg = new THREE.Mesh(box(0.1, 0.42, 0.1), metal);
+        leg.position.set(x + dx, 0.21, z0);
+        this.root.add(leg);
+      }
+      // bin
+      const bin = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.16, 0.55, 10), green);
+      bin.position.set(x + 2.4, 0.28, z0 + 0.2);
+      this.root.add(bin);
+    }
+
+    // waiting shelter
+    const sx = 26;
+    for (const dx of [-1.6, 1.6]) {
+      for (const dz of [-0.7, 0.7]) {
+        const post = new THREE.Mesh(box(0.1, 2.1, 0.1), metal);
+        post.position.set(sx + dx, 1.05, z0 + dz);
+        this.root.add(post);
+      }
+    }
+    const roof = new THREE.Mesh(box(3.8, 0.12, 2.0), green);
+    roof.position.set(sx, 2.15, z0);
+    this.root.add(roof);
+    const panel = new THREE.Mesh(new THREE.PlaneGeometry(3.2, 1.6), glass);
+    panel.position.set(sx, 1.3, z0 - 0.75);
+    this.root.add(panel);
+
+    // ticket machine
+    const machine = new THREE.Mesh(box(0.7, 1.5, 0.45), metal);
+    machine.position.set(33, 0.75, z0 + 0.4);
+    this.root.add(machine);
+    const screen = new THREE.Mesh(new THREE.PlaneGeometry(0.45, 0.3), new THREE.MeshBasicMaterial({ color: 0x9fd8ff }));
+    screen.position.set(33, 1.15, z0 + 0.63);
+    this.root.add(screen);
   }
 
   /** The taxi approach road: fills the foreground and explains the entry flow. */
@@ -852,6 +940,9 @@ export class Scene3D {
       }
       m.compose(new THREE.Vector3(e.x, 0.012, e.z), new THREE.Quaternion(), new THREE.Vector3(1, 1, 1));
       this.taxiShadow.setMatrixAt(n, m);
+      m.compose(new THREE.Vector3(e.x, 0.86, e.z), q, new THREE.Vector3(1, 1, 1));
+      this.signMesh.setMatrixAt(n, m);
+      this.signMesh.setColorAt(n, col.setHex(CLS_COLOR[e.cls] || 0xffffff));
       n++;
     }
     if (this.taxiInst) {
@@ -866,6 +957,9 @@ export class Scene3D {
     }
     this.taxiShadow.count = n;
     this.taxiShadow.instanceMatrix.needsUpdate = true;
+    this.signMesh.count = n;
+    this.signMesh.instanceMatrix.needsUpdate = true;
+    if (this.signMesh.instanceColor) this.signMesh.instanceColor.needsUpdate = true;
 
     /* --- people --- */
     const counts = [0, 0, 0];
@@ -906,12 +1000,18 @@ export class Scene3D {
       const c = e.cls;
       const i = counts[c];
       if (i >= PAX_CAP) continue;
-      const bob = e.moving ? Math.abs(Math.sin(this.time * 7.5 + id)) * 0.03 : 0;
+      // toy-like walk: vertical bob, lateral sway and a forward lean
+      const phase = this.time * 9 + id * 0.7;
+      const bob = e.moving ? Math.abs(Math.sin(phase)) * 0.045 : 0;
+      const sway = e.moving ? Math.sin(phase * 0.5) * 0.05 : 0;
+      const lean = e.moving ? -0.09 : 0;
       const variety = 0.94 + (((id * 13) % 7) / 7) * 0.12;
       const scale = Math.max(0.05, Math.min(1, e.fade)) * variety;
       // character models face -Z, so add PI to the heading
-      q.setFromAxisAngle(up, (e.yaw || 0) + Math.PI);
-      m.compose(new THREE.Vector3(e.x, 0.01 + bob, e.z), q, new THREE.Vector3(scale, scale, scale));
+      const heading = (e.yaw || 0) + Math.PI;
+      q.setFromEuler(new THREE.Euler(lean, heading, 0, "YXZ"));
+      const side = new THREE.Vector3(Math.cos(heading), 0, -Math.sin(heading)).multiplyScalar(sway);
+      m.compose(new THREE.Vector3(e.x + side.x, 0.01 + bob, e.z + side.z), q, new THREE.Vector3(scale, scale, scale));
       if (this.paxInst) this.paxInst[c].set(i, m);
       else this.paxMesh[c].setMatrixAt(i, m);
       m.compose(new THREE.Vector3(e.x, 0.015, e.z), new THREE.Quaternion(), new THREE.Vector3(scale * 0.8, scale, 1));
@@ -928,6 +1028,12 @@ export class Scene3D {
       }
       this.paxShadow[c].count = counts[c];
       this.paxShadow[c].instanceMatrix.needsUpdate = true;
+    }
+
+    /* --- clouds --- */
+    for (const c of this.clouds) {
+      c.sprite.position.x += c.speed * dt;
+      if (c.sprite.position.x > 78) c.sprite.position.x = -26;
     }
 
     /* --- ripples --- */

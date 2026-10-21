@@ -156,3 +156,36 @@ export function signTexture(text, color = "#e9f2ff") {
   tex.anisotropy = 4;
   return tex;
 }
+
+
+/** Soft daytime sky: pale blue at the top, warm haze at the horizon. */
+export function daySkyTexture() {
+  return make(16, 256, (g, w, h) => {
+    const grad = g.createLinearGradient(0, 0, 0, h);
+    grad.addColorStop(0.0, "#b9d8ee");
+    grad.addColorStop(0.55, "#d7e8f4");
+    grad.addColorStop(1.0, "#eef4f2");
+    g.fillStyle = grad;
+    g.fillRect(0, 0, w, h);
+  }, { repeat: [1, 1] });
+}
+
+/** Puffy cloud billboard (three overlapping blobs). */
+export function cloudTexture() {
+  return make(256, 128, (g, w, h) => {
+    const blob = (cx, cy, r) => {
+      const grad = g.createRadialGradient(cx, cy, r * 0.2, cx, cy, r);
+      grad.addColorStop(0, "rgba(255,255,255,0.95)");
+      grad.addColorStop(0.6, "rgba(255,255,255,0.75)");
+      grad.addColorStop(1, "rgba(255,255,255,0)");
+      g.fillStyle = grad;
+      g.beginPath();
+      g.arc(cx, cy, r, 0, Math.PI * 2);
+      g.fill();
+    };
+    blob(90, 74, 46);
+    blob(140, 62, 54);
+    blob(186, 78, 38);
+    blob(64, 82, 30);
+  }, { repeat: [1, 1] });
+}
