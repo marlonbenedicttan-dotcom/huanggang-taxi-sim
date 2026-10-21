@@ -200,3 +200,15 @@ export function cloudTexture() {
     blob(64, 82, 30);
   }, { repeat: [1, 1] });
 }
+
+
+/** Two-tone checker for grass / paving. */
+export function checkerTexture(a, b, cell = 32, repeat = [12, 12]) {
+  return make(cell * 2, cell * 2, (g, w, h) => {
+    g.fillStyle = a;
+    g.fillRect(0, 0, w, h);
+    g.fillStyle = b;
+    g.fillRect(0, 0, cell, cell);
+    g.fillRect(cell, cell, cell, cell);
+  }, { repeat });
+}

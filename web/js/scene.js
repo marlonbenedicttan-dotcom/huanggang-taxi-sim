@@ -16,7 +16,10 @@ import {
   CLS, CLS_COLOR, LANES, EXIT_X, TAXI, TERMINAL,
   bufferPos, standPos, bayPos, queuePos, baySlots, doorPos,
 } from "./layout.js";
-import { glowTexture, signTexture, daySkyTexture, cloudTexture } from "./textures.js";
+import {
+  glowTexture, signTexture, daySkyTexture, cloudTexture,
+  asphaltTexture, concreteTexture, checkerTexture,
+} from "./textures.js";
 import { instances } from "./assets.js";
 
 const TAXI_CAP = 72;
@@ -355,22 +358,61 @@ export class Scene3D {
     this.laneGlow = [];
     this.meta = meta;
 
+    // --- landscape -------------------------------------------------
+    // grass surround
     const ground = new THREE.Mesh(
       this.geo.ground,
-      new THREE.MeshStandardMaterial({ color: 0xa9b8b0, roughness: 1 })
+      new THREE.MeshStandardMaterial({
+        color: 0xffffff,
+        map: checkerTexture("#a9c98c", "#a4c487", 64, [6, 5]),
+        roughness: 1,
+      })
     );
     ground.rotation.x = -Math.PI / 2;
-    ground.position.set(23, -0.02, 12);
+    ground.position.set(23, -0.03, 12);
     this.root.add(ground);
+
+    // tarmac apron under the operational area
+    const apron = new THREE.Mesh(
+      new THREE.PlaneGeometry(54, 27),
+      new THREE.MeshStandardMaterial({
+        color: 0xffffff,
+        map: checkerTexture("#cdd2d8", "#c7ccd3", 32, [26, 13]),
+        roughness: 1,
+      })
+    );
+    apron.rotation.x = -Math.PI / 2;
+    apron.position.set(22.5, -0.015, 10.5);
+    this.root.add(apron);
+
+    // paved frontage along the terminal
+    const pave = new THREE.Mesh(
+      new THREE.PlaneGeometry(54, 5.4),
+      new THREE.MeshStandardMaterial({
+        color: 0xffffff,
+        map: concreteTexture([16, 2]),
+        roughness: 1,
+      })
+    );
+    pave.rotation.x = -Math.PI / 2;
+    pave.position.set(22.5, -0.005, -3.2);
+    this.root.add(pave);
+
+    // kerb: a lip between the grass and the apron
+    const kerbMat = new THREE.MeshStandardMaterial({ color: 0xd8d5cc, roughness: 0.9 });
+    for (const [w, d, x, z] of [[55, 0.3, 22.5, -3.0], [55, 0.3, 22.5, 24.2]]) {
+      const k = new THREE.Mesh(new THREE.BoxGeometry(w, 0.14, d), kerbMat);
+      k.position.set(x, 0.05, z);
+      this.root.add(k);
+    }
 
     for (const id of [0, 1, 2]) {
       const y = LANES[CLS[id]];
 
       // lane asphalt, slightly lighter so the three lanes read as lanes
-      const tint = new THREE.Color(CLS_COLOR[id]).lerp(new THREE.Color(0xffffff), 0.58);
       const strip = new THREE.Mesh(
         new THREE.PlaneGeometry(50, 4.9),
-        new THREE.MeshStandardMaterial({ color: tint, roughness: 1 })
+        new THREE.MeshStandardMaterial({ color: 0xa9aeb6, roughness: 1 })
       );
       strip.rotation.x = -Math.PI / 2;
       strip.position.set(23, 0.005, y);
@@ -390,6 +432,17 @@ export class Scene3D {
         edge.position.set(23, 0.012, y + dy);
         this.root.add(edge);
       }
+
+      // faint class wash over the queueing stretch only
+      const wash = new THREE.Mesh(
+        new THREE.PlaneGeometry(13, 4.6),
+        new THREE.MeshBasicMaterial({
+          color: CLS_COLOR[id], transparent: true, opacity: 0.16, depthWrite: false,
+        })
+      );
+      wash.rotation.x = -Math.PI / 2;
+      wash.position.set(18.5, 0.006, y);
+      this.root.add(wash);
 
       // coloured glow used to mark the bottleneck
       const glow = new THREE.Mesh(
@@ -426,6 +479,7 @@ export class Scene3D {
       }
     }
 
+    this._buildLandscape();
     this._buildTerminal();
     this._buildRoad();
     this._buildProps();
@@ -440,6 +494,40 @@ export class Scene3D {
     const t2 = this.label("PICKUP BAYS", "#51606f", 0.44);
     t2.position.set(40, 1.0, -1.6);
     this.root.add(t2);
+  }
+
+  /** One draw call for a repeated static prop. */
+  addInstanced(geo, material, spots) {
+    const mesh = new THREE.InstancedMesh(geo, material, spots.length);
+    const m = new THREE.Matrix4();
+    spots.forEach(([x, y, z, sc = 1], i) => {
+      m.compose(new THREE.Vector3(x, y, z), new THREE.Quaternion(), new THREE.Vector3(sc, sc, sc));
+      mesh.setMatrixAt(i, m);
+    });
+    mesh.instanceMatrix.needsUpdate = true;
+    this.root.add(mesh);
+    return mesh;
+  }
+
+  /** Hedges, planters and a distant treeline, so the site sits in a place. */
+  _buildLandscape() {
+    const flat = (c) => new THREE.MeshLambertMaterial({ color: c });
+    const hedge = [];
+    const trees = [];
+
+    // hedge along the far edge of the grass
+    for (let x = -8; x <= 56; x += 1.4) {
+      hedge.push([x, 0.28, -11.4]);
+      hedge.push([x, 0.28, 37]);
+    }
+    // distant treeline behind the terminal and beyond the road
+    for (let x = -20; x <= 66; x += 7.5) {
+      trees.push([x, 1.4, -34 - ((x % 7) * 0.6)]);
+      trees.push([x + 3, 1.2, 54 + ((x % 5) * 0.7)]);
+    }
+
+    this.addInstanced(new THREE.BoxGeometry(1.6, 0.6, 0.5), flat(0x86ad74), hedge);
+    this.addInstanced(new THREE.ConeGeometry(1.1, 2.6, 6), flat(0x7ba36b), trees);
   }
 
   _buildTerminal() {
