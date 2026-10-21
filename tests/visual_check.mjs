@@ -1,10 +1,10 @@
 /**
- * Visual regression harness.
+ * Visual regression harness for the 2.5D pixel renderer.
  *
- * The simulation has parity tests; this is the equivalent for the 3D layer.
- * It answers one question in a single run: **are the moving entities actually
- * in the scene and drawable?** Every failure we hit could have been named by
- * one of these checks.
+ * The simulation has parity tests; this is the equivalent for the picture.
+ * It answers one question in a single run: **is the scene actually being
+ * drawn, with entities, and does it animate?** Every failure we hit during
+ * the 3D years could have been named by one of these checks.
  *
  *   node tests/visual_check.mjs [url]
  *
@@ -15,138 +15,79 @@ import { chromium } from "playwright-core";
 const url = process.argv[2] ||
   "http://localhost:8010/?preset=baseline&t=40&play=0&tour=0";
 
-const browser = await chromium.launch({
-  channel: "chrome",
-  headless: true,
-  args: ["--enable-unsafe-swiftshader", "--use-gl=angle", "--use-angle=swiftshader"],
-});
+const browser = await chromium.launch({ channel: "chrome", headless: true });
 const page = await browser.newPage({ viewport: { width: 1280, height: 820 } });
 const errors = [];
 page.on("pageerror", (e) => errors.push(e.message));
 
 await page.goto(url, { waitUntil: "networkidle" });
-// give the kit + the first frames time to land
-await page.waitForTimeout(3500);
+await page.waitForTimeout(2500);
 
-const report = await page.evaluate(() => {
+const checks = [];
+const add = (name, ok, detail) => checks.push({ name, ok, detail });
+
+/* ---- 1. app booted and the scene holds entities ---- */
+const info = await page.evaluate(() => {
   const sim = window.__sim;
   if (!sim) return { fatal: "window.__sim missing — app did not initialise" };
   const s = sim.scene;
-  const f = sim.state.frames[Math.round((sim.state.playT - sim.state.from) / sim.state.step)];
-
-  const checks = [];
-  const add = (name, ok, detail) => checks.push({ name, ok, detail });
-
-  // 1. the simulation produced entities in this frame
-  const txCount = f ? f.tx.length : 0;
-  const pxCount = f ? f.px.length : 0;
-  add("frame has taxis", txCount > 0, `${txCount} taxis in frame`);
-  add("frame has passengers", pxCount > 0, `${pxCount} passengers in frame`);
-
-  // 2. the entity meshes exist
-  const meshNames = ["taxiShell", "taxiRoof", "taxiDark", "taxiShadow"];
-  for (const n of meshNames) {
-    const m = s[n];
-    add(`${n} exists`, !!m, m ? `${m.count} instances` : "missing");
-  }
-
-  // 3. they are attached to the live scene graph (the detached-mesh bug)
-  for (const n of meshNames) {
-    const m = s[n];
-    if (!m) continue;
-    let attached = false;
-    let node = m;
-    while (node) {
-      if (node === s.root) { attached = true; break; }
-      node = node.parent;
-    }
-    add(`${n} attached to root`, attached, attached ? "ok" : "DETACHED from scene root");
-  }
-
-  // 4. they have a non-zero instance count
-  const shell = s.taxiShell;
-  if (shell) add("taxiShell.count > 0", shell.count > 0, `count=${shell.count}`);
-  const pax = s.paxMesh && s.paxMesh[0];
-  if (pax) add("paxMesh[0].count > 0", pax.count > 0, `count=${pax.count}`);
-
-  // 5. the matrices are finite (a NaN scale makes a mesh invisible)
-  if (shell && shell.count > 0) {
-    const arr = shell.instanceMatrix.array;
-    let bad = 0;
-    for (let i = 0; i < Math.min(16 * shell.count, arr.length); i++) {
-      if (!Number.isFinite(arr[i])) bad++;
-    }
-    add("taxi matrices finite", bad === 0, bad ? `${bad} non-finite values` : "ok");
-  }
-
-  // 5b. all three taxi colourways exist and have instances
-  // Either three GLB colourway pools, or one pool with per-instance colours.
-  const ti = s.taxiInst;
-  const perInstance = !!s.taxiShell?.instanceColor;
-  add("taxis carry a class colour",
-      (Array.isArray(ti) && ti.length === 3) || perInstance,
-      Array.isArray(ti) ? `${ti.length} colourway pools` : perInstance ? "per-instance colour" : "NO COLOUR");
-
-  // 6. the renderer is actually drawing geometry
-  const info = s.renderer.info.render;
-  add("draw calls > 20", info.calls > 20, `${info.calls} calls`);
-  add("triangles > 5k", info.triangles > 5000, `${info.triangles} tris`);
-
-  // 7. the clock is moving (the loop is alive)
-  const t0 = sim.state.playT;
-  return { checks, t0, frames: sim.state.frames.length };
+  return {
+    taxis: s.taxis?.size ?? -1,
+    people: s.people?.size ?? -1,
+    buf: [s.buf?.width, s.buf?.height],
+    labels: document.querySelectorAll("#zoneLabels .zone-label").length,
+    canvas: [s.canvas.width, s.canvas.height],
+  };
 });
 
-// ---- the check that would have caught every failure: pixels ----
-// Screenshot the hall, hide every entity mesh, screenshot again. If the two
-// images are identical, the entities are not contributing a single pixel,
-// no matter what the counts say.
-await page.evaluate(() => window.__sim.settle?.(3));
-await page.waitForTimeout(400);
-const before = await page.screenshot({ clip: { x: 340, y: 60, width: 1100, height: 640 } });
-
-await page.evaluate(() => {
-  const s = window.__sim.scene;
-  let hidden = 0;
-  s.root.traverse((o) => {
-    if (o.isMesh && o.userData.entity) { o.visible = false; hidden++; }
-  });
-  s.renderer.render(s.scene, s.camera);
-  window.__hidden = hidden;
-});
-await page.waitForTimeout(300);
-const after = await page.screenshot({ clip: { x: 340, y: 60, width: 1100, height: 640 } });
-
-const hiddenCount = await page.evaluate(() => window.__hidden || 0);
-const identical = Buffer.compare(before, after) === 0;
-const pixelCheck = {
-  name: "entities contribute pixels",
-  ok: !identical,
-  detail: identical
-    ? "IDENTICAL images with entities hidden — nothing is drawn"
-    : `differs (${before.length} vs ${after.length} bytes, ${hiddenCount} meshes hidden)`,
-};
-
-await browser.close();
-
-if (report.fatal) {
-  console.log("FATAL:", report.fatal);
+if (info.fatal) {
+  console.log(`FAIL  ${info.fatal}`);
+  await browser.close();
   process.exit(1);
 }
 
-// bring the pixel result into the report
-report.checks.push(pixelCheck);
+add("app initialised", true, `buffer ${info.buf[0]}x${info.buf[1]}`);
+add("taxis in scene", info.taxis > 0, `${info.taxis} taxis`);
+add("people in scene", info.people > 0, `${info.people} people`);
+add("zone counters attached", info.labels === 4, `${info.labels} labels`);
 
+/* ---- 2. the canvas actually has a picture on it ---- */
+const picture = await page.evaluate(() => {
+  const s = window.__sim.scene;
+  const c = s.canvas;
+  const g = c.getContext("2d");
+  // read the middle band, avoiding the letterbox
+  const d = g.getImageData(0, Math.round(c.height * 0.2), c.width, Math.round(c.height * 0.5)).data;
+  const seen = new Set();
+  let sum = 0;
+  for (let i = 0; i < d.length; i += 4) {
+    seen.add((d[i] >> 3) << 10 | (d[i + 1] >> 3) << 5 | (d[i + 2] >> 3));
+    sum += d[i] + d[i + 1] + d[i + 2];
+  }
+  return { colours: seen.size, mean: Math.round(sum / (d.length / 4) / 3) };
+});
+
+add("canvas is not blank", picture.mean > 20 && picture.mean < 245, `mean luma ${picture.mean}`);
+add("canvas has depth", picture.colours > 24, `${picture.colours} distinct colours`);
+
+/* ---- 3. it animates: same scene, a moment later, must differ ---- */
+const before = await page.screenshot();
+await page.evaluate(() => window.__sim.settle(1.2));
+const after = await page.screenshot();
+add("animation moves", Buffer.compare(before, after) !== 0,
+  `${before.length} -> ${after.length} bytes`);
+
+/* ---- 4. no runtime errors ---- */
+add("no page errors", errors.length === 0, errors.slice(0, 2).join(" | ") || "clean");
+
+/* ---- report ---- */
 let failed = 0;
-console.log("visual check —", url);
-console.log("frames:", report.frames);
-for (const c of report.checks) {
+for (const c of checks) {
+  const mark = c.ok ? "PASS" : "FAIL";
   if (!c.ok) failed++;
-  console.log(`${c.ok ? "PASS" : "FAIL"}  ${c.name.padEnd(26)} ${c.detail}`);
+  console.log(`${mark}  ${c.name.padEnd(24)} ${c.detail}`);
 }
-if (errors.length) {
-  console.log("page errors:");
-  for (const e of errors.slice(0, 3)) console.log("   ", e.slice(0, 160));
-}
-console.log(failed === 0 ? "\nALL CHECKS PASSED" : `\n${failed} CHECK(S) FAILED`);
-process.exit(failed === 0 ? 0 : 1);
+console.log(failed ? `\n${failed} CHECK(S) FAILED` : "\nALL CHECKS PASSED");
+
+await browser.close();
+process.exit(failed ? 1 : 0);

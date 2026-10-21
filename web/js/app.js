@@ -6,8 +6,8 @@
  */
 
 import { runSimulation, DEFAULTS, SMART } from "./sim.js";
-import { Scene3D } from "./scene.js";
-import { prepare, recolor } from "./assets.js";
+import { PixelScene } from "./pixel/pixel-scene.js";
+
 import { CSS_COLOR, CLS_LABEL, CLS_SHORT } from "./layout.js";
 
 const $ = (sel) => document.querySelector(sel);
@@ -131,7 +131,7 @@ const state = {
   meta: null,
 };
 
-const scene = new Scene3D($("#scene"));
+const scene = new PixelScene($("#scene"));
 
 /* Auto-apply: a run costs 25-50 ms, so waiting for a button is friction.
    Debounced so dragging a slider does not queue dozens of runs. */
@@ -755,7 +755,7 @@ let bKey = null;
 
 function ensureSceneB() {
   if (sceneB) return sceneB;
-  sceneB = new Scene3D($("#sceneB"));
+  sceneB = new PixelScene($("#sceneB"));
   sceneB.setQuality(valueOf("highQuality") ? "high" : "low");
   return sceneB;
 }
@@ -880,45 +880,6 @@ function setCompare(on) {
   $("#cmpBtn").textContent = on ? "Comparing" : "Compare";
 }
 
-
-/* ================================================================== *
- * CC0 kit assets (Kenney city / car / nature)
- * ================================================================== */
-async function loadKitAssets() {
-  try {
-    const base = "./models/";
-    const [b1, b2, b3, tree, bush, taxi, pa, pb, pc] = await Promise.all([
-      prepare(base + "city/building-l.glb", { targetHeight: 5.2 }),
-      prepare(base + "city/building-e.glb", { targetHeight: 3.4 }),
-      prepare(base + "city/building-a.glb", { targetHeight: 4.4 }),
-      prepare(base + "nature/tree_cone.glb", { targetHeight: 1.9 }),
-      prepare(base + "nature/plant_bush.glb", { targetHeight: 0.55 }),
-      prepare(base + "car/taxi.glb", { targetLength: 1.2, rotateY: -Math.PI / 2 }),
-      prepare(base + "chars/character-a.glb", { targetHeight: 0.78 }),
-      prepare(base + "chars/character-b.glb", { targetHeight: 0.78 }),
-      prepare(base + "chars/character-c.glb", { targetHeight: 0.78 }),
-    ]);
-
-    scene.assets = {
-      buildings: [b1, b2, b3],
-      trees: [tree],
-      bushes: [bush],
-      // Hong Kong taxis are red (urban), green (New Territories) and blue
-      // (pre-booked); one model, three hue rotations of its texture atlas.
-      taxi: [recolor(taxi, 2), recolor(taxi, 148), recolor(taxi, 214)],
-      people: [pa, pb, pc],
-    };
-
-    // rebuild the static world with the models in place
-    if (state.meta) {
-      scene.setScene(state.meta);
-      scene.attachLabels($("#zoneLabels"));
-      bKey = null;
-    }
-  } catch (err) {
-    console.warn("model assets unavailable, keeping the procedural world", err);
-  }
-}
 
 /* ================================================================== *
  * Guided tour + shareable links
@@ -1172,9 +1133,6 @@ function init() {
     state.playing = false;
   }
   if (q.get("play") === "0") state.playing = false;
-
-  // Kits load after the first paint so startup is never blocked by the network.
-  loadKitAssets();
 
   // handle for tests, screenshots and video recording
   window.__sim = {

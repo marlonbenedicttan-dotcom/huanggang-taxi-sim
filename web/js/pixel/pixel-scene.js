@@ -1,0 +1,837 @@
+/**
+ * 2.5D pixel renderer.
+ *
+ * Ground is drawn in plan (slightly foreshortened); everything that stands on
+ * it is a billboard sprite anchored at its feet and sorted by depth. This is
+ * the "Stardew" arrangement: you see the whole rank at once, but the taxis and
+ * people still have silhouettes.
+ *
+ * Everything renders into a 640x360 buffer at 1:1 and is then blitted with
+ * nearest-neighbour scaling, so the pixel size is constant regardless of the
+ * window.
+ *
+ * The public surface mirrors the old three.js Scene3D so app.js does not care
+ * which renderer is behind it.
+ */
+import {
+  CLS, CLS_COLOR, LANES, TERMINAL, DOORS, EXIT_X,
+  bufferPos, standPos, bayPos, queuePos, baySlots, doorPos,
+} from "../layout.js";
+import { PAL, LIVERY, SPR, drawText, textWidth } from "./sprites.js";
+
+/* ---------------- projection ---------------- */
+let W = 640;
+let H = 360;
+let U = 12.6;   // pixels per world unit along the hall (x)
+let V = 6.9;    // pixels per world unit into the screen (z) — foreshortened
+let OX = 16;
+let OY = 118;   // screen y of z = 0
+
+const LANDSCAPE = { W: 640, H: 360, U: 12.6, V: 6.9, OX: 16, OY: 118 };
+const PORTRAIT = { W: 420, H: 520, U: 12.0, V: 10.5, OX: -86, OY: 150 };
+
+const X = (x) => OX + x * U;
+const Z = (z) => OY + z * V;
+
+const CLS_NAME = ["urban", "nt", "prebook", "flex"];
+
+/** Pre-render a sprite rotated 90°, so bay taxis face the terminal. */
+function rotated(src) {
+  const cv = document.createElement("canvas");
+  cv.width = src.height;
+  cv.height = src.width;
+  const g = cv.getContext("2d");
+  g.imageSmoothingEnabled = false;
+  g.translate(cv.width / 2, cv.height / 2);
+  g.rotate(Math.PI / 2);
+  g.drawImage(src, -src.width / 2, -src.height / 2);
+  return cv;
+}
+
+/**
+ * Boarding positions. layout.js packs every group into one vertical column,
+ * which was invisible in perspective and is not in plan: urban, NT and
+ * pre-booked bays end up stacked on the same pixels. Each lane gets its own
+ * boarding kerb at the east end instead.
+ */
+const BAY_X = 35.4;
+const BAY_DX = 1.06;
+function baySlot(groupId, idx) {
+  const lane = groupId === 3 ? LANES.flex : LANES[CLS[groupId]] ?? LANES.urban;
+  return [BAY_X + Math.min(idx, 8) * BAY_DX, lane];
+}
+
+const TAXI_SIDE = SPR.taxi;
+const TAXI_BAY = Object.fromEntries(
+  Object.entries(SPR.taxi).map(([k, v]) => [k, rotated(v)])
+);
+
+export class PixelScene {
+  constructor(canvas) {
+    this.canvas = canvas;
+    this.ctx = canvas.getContext("2d");
+    this.ctx.imageSmoothingEnabled = false;
+
+    this.buf = document.createElement("canvas");
+    this.buf.width = W;
+    this.buf.height = H;
+    this.g = this.buf.getContext("2d");
+    this.g.imageSmoothingEnabled = false;
+
+    this.taxis = new Map();
+    this.people = new Map();
+    this.time = 0;
+    this.hour = 9;
+    this.quality = "high";
+    this.dprScale = 1;
+    this.portrait = false;
+    this.assets = null;
+
+    // stubs so the old diagnostics in app.js do not explode
+    this.renderer = { info: { render: { calls: 0, triangles: 0 } } };
+    this.camera = { position: { toArray: () => [0, 0, 0] } };
+    this.target = { toArray: () => [0, 0, 0] };
+    this.root = { children: [] };
+    this.orbit = { theta: 0, phi: 0, radius: 0 };
+    this.labelEls = null;
+    this.metaFrame = null;
+    this.meta = null;
+
+    this.resize();
+  }
+
+  /* ---------------- sizing ---------------- */
+  resize() {
+    const rect = this.canvas.getBoundingClientRect();
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const cw = Math.max(1, Math.round(rect.width * dpr));
+    const ch = Math.max(1, Math.round(rect.height * dpr));
+    this.canvas.width = cw;
+    this.canvas.height = ch;
+    this.dpr = dpr;
+    this.portrait = rect.height > rect.width * 1.15;
+
+    // a tall screen gets its own framing: a narrower slice of the hall and a
+    // more top-down ground, so the scene fills the panel instead of sitting in
+    // a letterboxed strip with acres of grass above and below
+    const v = this.portrait ? PORTRAIT : LANDSCAPE;
+    if (W !== v.W || H !== v.H) {
+      W = v.W; H = v.H;
+      this.buf.width = W;
+      this.buf.height = H;
+      this.g = this.buf.getContext("2d");
+      this.g.imageSmoothingEnabled = false;
+    }
+    U = v.U; V = v.V; OX = v.OX; OY = v.OY;
+    // fit the 16:9 buffer, letterboxing with grass so the frame never jumps
+    this.scale = Math.min(cw / W, ch / H);
+    this.offX = Math.round((cw - W * this.scale) / 2);
+    // portrait: anchor to the top so the spare height falls behind the sheet
+    this.offY = this.portrait
+      ? Math.round(48 * dpr)
+      : Math.round((ch - H * this.scale) / 2);
+    this.ctx.imageSmoothingEnabled = false;
+  }
+
+  setQuality(q) {
+    this.quality = q;
+  }
+
+  setDprScale(v) {
+    this.dprScale = v;
+  }
+
+  setHour(h) {
+    this.hour = h;
+  }
+
+  /* ---------------- world building ---------------- */
+  setScene(meta) {
+    this.meta = meta;
+    this.bays = [];
+    for (const gid of meta?.groups || []) {
+      const id = CLS.indexOf(gid);
+      if (id < 0) continue;
+      const n = id === 0 ? 8 : id === 1 ? 3 : id === 2 ? 2 : 11;
+      for (let i = 0; i < n; i++) {
+        const [x, z] = baySlot(id, i);
+        this.bays.push({ id, x, z, i });
+      }
+    }
+  }
+
+  /** CSS pixels for a world point — used by the HTML zone counters. */
+  project(x, y, z) {
+    const s = this.scale / (this.dpr || 1);
+    return {
+      x: this.offX / (this.dpr || 1) + X(x) * s,
+      y: this.offY / (this.dpr || 1) + (Z(z) - (y || 0) * 13) * s,
+      z: 0,
+    };
+  }
+
+  attachLabels(host) {
+    if (!host) {
+      this.labelEls = null;
+      return;
+    }
+    host.innerHTML = "";
+    this.labelEls = [0, 1, 2].map((c) => {
+      const el = document.createElement("div");
+      el.className = "zone-label";
+      el.style.setProperty("--c", ["#f2685c", "#2ec4a6", "#4a9eff"][c]);
+      host.appendChild(el);
+      return el;
+    });
+    const buf = document.createElement("div");
+    buf.className = "zone-label buffer";
+    host.appendChild(buf);
+    this.labelEls.push(buf);
+  }
+
+  /* ---------------- per-frame state ---------------- */
+  sync(frame) {
+    this.metaFrame = frame;
+    if (!frame) return;
+    const seenT = new Set();
+    const seenP = new Set();
+
+    for (const row of frame.tx) {
+      const [id, clsId, state, slot, group, bay] = row;
+      seenT.add(id);
+      const [x, z] = state === 2 ? baySlot(group, bay)
+        : state === 1 ? standPos(clsId, slot)
+        : bufferPos(clsId, slot);
+      let e = this.taxis.get(id);
+      if (!e) {
+        e = { x: -14, z: 25.4, tx: x, tz: z, v: 0, cls: clsId, face: 1, exiting: false,
+              wp: { x: -3.0, z: 22.6 } };
+        this.taxis.set(id, e);
+      }
+      e.tx = x;
+      e.tz = z;
+      e.parked = state === 2;
+      e.exiting = false;
+    }
+
+    for (const [id, clsId, slot] of frame.px) {
+      seenP.add(id);
+      // queuePos wraps after 48 people, which stacked everyone on top of
+      // everyone once a lane got busy. Offset each extra layer instead.
+      const layer = Math.floor(slot / 48);
+      const k = slot % 48;
+      const col = k % 12, row = Math.floor(k / 12);
+      const qx = 13.4 + col * 0.8 + layer * 0.16;
+      const qz = LANES[CLS[clsId]] + [-1.65, -0.55, 0.55, 1.65][row] + layer * 0.10;
+      const jx = (((id * 37) % 17) / 17 - 0.5) * 0.22;
+      const jz = (((id * 53) % 19) / 19 - 0.5) * 0.20;
+      let e = this.people.get(id);
+      if (!e) {
+        const [dx, dz] = doorPos(clsId);
+        e = { x: dx, z: dz, tx: qx, tz: qz, cls: clsId, leaving: false, wait: 0.2, seed: id };
+        this.people.set(id, e);
+      }
+      e.tx = qx + jx;
+      e.tz = qz + jz;
+    }
+
+    for (const [id, e] of this.people) {
+      if (seenP.has(id)) continue;
+      if (!e.leaving) {
+        e.leaving = true;
+        e.tx = 38.2;
+        e.tz = LANES[CLS[e.cls]];
+        e.wait = 0.35;
+      }
+    }
+
+    for (const [id, e] of this.taxis) {
+      if (seenT.has(id)) continue;
+      if (e.exiting !== "exit") {
+        e.exiting = "exit";
+        e.tx = EXIT_X + 8;
+        e.tz = LANES[CLS[e.cls]];
+        e.parked = false;
+      }
+    }
+  }
+
+  /** Queue slot (same wrapping rule as sync) so labels land on the crowd. */
+  _queueSlot(clsId, slot) {
+    const layer = Math.floor(slot / 48);
+    const k = slot % 48;
+    const col = k % 12, row = Math.floor(k / 12);
+    return [
+      13.4 + col * 0.8 + layer * 0.16,
+      LANES[CLS[clsId]] + [-1.65, -0.55, 0.55, 1.65][row] + layer * 0.10,
+    ];
+  }
+
+  /* ---------------- motion ---------------- */
+  tick(dt, hour) {
+    this.time += dt;
+    if (hour != null) this.setHour(hour);
+    const step = Math.min(dt, 0.1);
+
+    for (const [id, e] of this.taxis) {
+      let gx = e.tx, gz = e.tz;
+      if (e.wp) {
+        if (Math.hypot(e.wp.x - e.x, e.wp.z - e.z) < 1.4) e.wp = null;
+        else { gx = e.wp.x; gz = e.wp.z; }
+      }
+      const dx = gx - e.x, dz = gz - e.z;
+      const d = Math.hypot(dx, dz);
+      if (d > 9) {
+        e.x = e.tx; e.z = e.tz; e.v = 0;
+      } else if (d > 0.02) {
+        const want = Math.min(e.exiting ? 9 : 7, Math.max(0.5, d * 2.6));
+        e.v += (want - e.v) * Math.min(1, step * 6);
+        const len = Math.min(d, e.v * step);
+        e.x += (dx / d) * len;
+        e.z += (dz / d) * len;
+        if (Math.abs(dx) > 0.05) e.face = dx > 0 ? 1 : -1;
+      } else {
+        e.v = 0;
+      }
+      if (e.exiting === "exit" && d < 0.4) this.taxis.delete(id);
+    }
+
+    for (const [id, e] of this.people) {
+      if (e.wait > 0) { e.wait -= step; continue; }
+      const dx = e.tx - e.x, dz = e.tz - e.z;
+      const d = Math.hypot(dx, dz);
+      if (d > 6) {
+        e.x = e.tx; e.z = e.tz;
+      } else if (d > 0.03) {
+        const sp = e.leaving ? 2.6 : 2.1;
+        const len = Math.min(d, sp * step);
+        e.x += (dx / d) * len;
+        e.z += (dz / d) * len;
+        e.moving = true;
+        e.face = dx >= 0 ? 1 : -1;
+      } else {
+        e.moving = false;
+      }
+      if (e.leaving && d < 0.25) this.people.delete(id);
+    }
+
+    this._updateLabels();
+  }
+
+  _updateLabels() {
+    if (!this.labelEls || !this.metaFrame) return;
+    const f = this.metaFrame;
+    let worst = 0;
+    for (let c = 1; c < 3; c++) if (f.q[c] > f.q[worst]) worst = c;
+    for (let c = 0; c < 3; c++) {
+      const el = this.labelEls[c];
+      const [wx, wz] = this._queueSlot(c, Math.min(6, Math.max(0, f.q[c] - 1)));
+      const p = this.project(wx, 1.7, wz);
+      const n = f.q[c];
+      el.classList.toggle("hidden", n === 0);
+      el.classList.toggle("worst", c === worst && n > 6);
+      el.innerHTML = `<b>${n}</b> waiting`;
+      el.style.transform = `translate(${p.x}px, ${p.y}px) translate(-50%, -100%)`;
+    }
+    const buf = this.labelEls[3];
+    const [bx, bz] = bufferPos(0, 10);
+    const pb = this.project(bx, 1.7, bz);
+    buf.innerHTML = `<b>${f.buf}</b> taxis`;
+    buf.style.transform = `translate(${pb.x}px, ${pb.y}px) translate(-50%, -100%)`;
+    buf.classList.remove("hidden");
+  }
+
+  /* ================================================================== *
+   * drawing
+   * ================================================================== */
+  render() {
+    const g = this.g;
+    g.clearRect(0, 0, W, H);
+
+    this._drawGrass();
+    this._drawGround();
+    this._drawLanes();
+    this._drawMarkings();
+    this._drawRoad();
+    this._drawBackdrop();
+    this._drawTerminal();
+    this._drawPropsAndPeople();
+    this._drawWeather();
+    this._drawFrame();
+
+    const c = this.ctx;
+    // fill the letterbox with a continuation of the lawn, so a tall phone
+    // panel reads as more ground rather than as empty page
+    const grad = c.createLinearGradient(0, 0, 0, this.canvas.height);
+    grad.addColorStop(0, "#63904f");
+    grad.addColorStop(0.55, PAL.grass);
+    grad.addColorStop(1, "#5b8547");
+    c.fillStyle = grad;
+    c.fillRect(0, 0, this.canvas.width, this.canvas.height);
+    c.imageSmoothingEnabled = false;
+    c.drawImage(this.buf, 0, 0, W, H,
+      this.offX, this.offY, Math.round(W * this.scale), Math.round(H * this.scale));
+  }
+
+  _drawGrass() {
+    const g = this.g;
+    g.fillStyle = PAL.grass;
+    g.fillRect(0, 0, W, H);
+
+    // dither so the lawn is not a flat block of colour
+    g.fillStyle = PAL.grassDark;
+    for (let y = 0; y < H; y += 2) {
+      for (let x = (y % 4 === 0 ? 0 : 1); x < W; x += 2) g.fillRect(x, y, 1, 1);
+    }
+
+    // tufts
+    g.fillStyle = PAL.grassLight;
+    for (let i = 0; i < 90; i++) {
+      const x = (i * 71 + 23) % W;
+      const y = (i * 137 + 41) % H;
+      if (y > 44 && y < 344 && x > 6 && x < 634) continue;
+      g.fillRect(x, y, 1, 2);
+      g.fillRect(x + 1, y + 1, 1, 1);
+    }
+  }
+
+  _drawGround() {
+    const g = this.g;
+    const x0 = X(-2), x1 = X(49);
+    const y0 = Z(-3.4), y1 = Z(24.6);
+
+    // apron
+    g.fillStyle = PAL.stone;
+    g.fillRect(x0, y0, x1 - x0, y1 - y0);
+
+    // expansion joints every 4 units
+    g.fillStyle = "#cbc2b0";
+    for (let x = 0; x <= 48; x += 4) g.fillRect(Math.round(X(x)), y0, 1, y1 - y0);
+    for (let z = -3; z <= 24; z += 4) g.fillRect(x0, Math.round(Z(z)), x1 - x0, 1);
+
+    // kerb ring with a lit top edge
+    g.fillStyle = "#efe8d8";
+    g.fillRect(x0, y0 - 3, x1 - x0, 3);
+    g.fillStyle = "#b7ae9c";
+    g.fillRect(x0, y0 - 1, x1 - x0, 1);
+  }
+
+  _drawLanes() {
+    const g = this.g;
+    for (let id = 0; id < 3; id++) {
+      const z = LANES[CLS[id]];
+      const top = Z(z - 1.9);
+      const bot = Z(z + 1.9);
+      const h = bot - top;
+
+      // asphalt
+      g.fillStyle = PAL.road;
+      g.fillRect(X(-2), top, X(49) - X(-2), h);
+
+      // far edge falls into shade, near edge catches the light
+      g.fillStyle = "rgba(30,34,40,0.16)";
+      g.fillRect(X(-2), top, X(49) - X(-2), 3);
+
+      // wear: two darker tyre tracks
+      g.fillStyle = PAL.roadDark;
+      g.fillRect(X(-2), top + 6, X(49) - X(-2), 3);
+      g.fillRect(X(-2), bot - 9, X(49) - X(-2), 3);
+
+      // coloured kerb on the terminal side
+      g.fillStyle = LIVERY[CLS[id]];
+      g.fillRect(X(-2), top - 2, X(49) - X(-2), 2);
+      g.fillStyle = "#cbc2b0";
+      g.fillRect(X(-2), bot, X(49) - X(-2), 2);
+      g.fillStyle = "#efe8d8";
+      g.fillRect(X(-2), bot + 2, X(49) - X(-2), 1);
+
+      // lane name painted on the asphalt
+      drawText(g, ["URBAN", "NEW TERRITORIES", "PRE-BOOKED"][id],
+        X(2), Math.round(top + h / 2) - 2, "rgba(248,244,232,0.78)", 1);
+
+      // chevrons pointing to the bays
+      g.fillStyle = "rgba(240,236,222,0.35)";
+      for (let i = 0; i < 3; i++) {
+        const cx = Math.round(X(30 + i * 2.4));
+        const cy = Math.round(top + h / 2);
+        g.fillRect(cx, cy - 3, 1, 7);
+        g.fillRect(cx + 1, cy - 2, 1, 5);
+        g.fillRect(cx + 2, cy - 1, 1, 3);
+      }
+    }
+  }
+
+  _drawMarkings() {
+    const g = this.g;
+
+    // queue ladder: four rows of stand-here ticks per lane
+    for (let id = 0; id < 3; id++) {
+      const z = LANES[CLS[id]];
+      g.fillStyle = "rgba(250,246,232,0.28)";
+      for (let i = 0; i < 12; i++) {
+        const x = Math.round(X(13.4 + i * 0.8));
+        for (const dz of [-1.65, -0.55, 0.55, 1.65]) {
+          g.fillRect(x, Math.round(Z(z + dz) - 2), 1, 4);
+        }
+      }
+      // the queue pad itself is a shade lighter than the lane
+      g.fillStyle = "rgba(255,255,255,0.05)";
+      g.fillRect(X(13.2), Z(z - 1.85), X(23.2) - X(13.2), Z(z + 1.85) - Z(z - 1.85));
+    }
+
+    // bay pads + numbers
+    for (const b of this.bays) {
+      const x = X(b.x);
+      const y = Z(b.z);
+      const w = 1.6 * U;
+      const h = 1.25 * V;
+      g.fillStyle = "rgba(250,246,232,0.35)";
+      g.fillRect(Math.round(x - w / 2), Math.round(y - h / 2), Math.round(w), 1);
+      g.fillRect(Math.round(x - w / 2), Math.round(y + h / 2) - 1, Math.round(w), 1);
+      g.fillStyle = LIVERY[CLS[b.id]];
+      g.fillRect(Math.round(x - w / 2), Math.round(y - h / 2) - 1, Math.round(w), 1);
+    }
+
+  }
+
+  _drawRoad() {
+    const g = this.g;
+    const top = Z(26.2);
+    const bot = Z(31);
+    g.fillStyle = "#63676d";
+    g.fillRect(0, top, W, bot - top);
+    g.fillStyle = "#efe8d8";
+    g.fillRect(0, top, W, 1);
+    g.fillRect(0, bot - 1, W, 1);
+    g.fillStyle = "#d8d2bf";
+    for (let x = 8; x < W; x += 26) g.fillRect(x, Math.round(top + (bot - top) / 2), 12, 1);
+
+    drawText(g, "TAXI APPROACH", 12, Math.round(top + 4), "rgba(240,236,222,0.5)", 1);
+
+    // ambient traffic: a couple of taxis running the approach road
+    const lanes = [top + 7, top + 17];
+    for (let i = 0; i < 3; i++) {
+      const dir = i % 2 === 0 ? 1 : -1;
+      const speed = 26 + i * 9;
+      const span = W + 40;
+      let x = ((this.time * speed + i * 210) % span) - 20;
+      if (dir < 0) x = W - x;
+      const y = lanes[i % 2];
+      const spr = TAXI_SIDE[["urban", "nt", "prebook"][i]];
+      g.save();
+      if (dir < 0) {
+        g.translate(Math.round(x), Math.round(y));
+        g.scale(-1, 1);
+        g.drawImage(spr, -7, -8);
+      } else {
+        g.drawImage(spr, Math.round(x - 7), Math.round(y - 8));
+      }
+      g.restore();
+    }
+  }
+
+  /** Far lawn behind the terminal: a second rank of trees and a little haze. */
+  _drawBackdrop() {
+    const g = this.g;
+    const horizon = Z(TERMINAL.y) - 66;
+    const base = horizon - 34;
+    const row = [[-6, 1.05], [1, 0.9], [8, 1.1], [16, 0.95], [23, 1.05],
+                 [31, 0.9], [38, 1.1], [46, 0.95], [53, 1.0]];
+    for (const [x, sc] of row) {
+      const spr = SPR.tree;
+      const w = Math.round(spr.width * sc);
+      const h = Math.round(spr.height * sc);
+      const px = Math.round(X(x) - w / 2);
+      if (px > W || px + w < 0) continue;
+      g.drawImage(spr, px, Math.round(base - h), w, h);
+    }
+
+    // haze pushes the back row away instead of letting it compete
+    for (let i = 0; i < 4; i++) {
+      g.fillStyle = `rgba(168,190,205,${0.10 - i * 0.02})`;
+      g.fillRect(0, 0, W, Math.round(base) + i * 12);
+    }
+  }
+
+  _drawTerminal() {
+    const g = this.g;
+
+    // treeline on the far lawn: this grass is *above* the building, so it is
+    // further away — trees here stand on ground the viewer can see.
+    const horizon = Z(TERMINAL.y) - 66;   // top edge of the terminal wall
+    for (const [x, scale] of [[-2, 0.9], [4, 1.05], [11, 0.85], [25, 0.95],
+                              [31, 1.1], [38, 0.9], [45, 1.0], [50, 0.85]]) {
+      const spr = SPR.tree;
+      const w = Math.round(spr.width * scale);
+      const h = Math.round(spr.height * scale);
+      g.drawImage(spr, Math.round(X(x) - w / 2), Math.round(horizon - h + 2), w, h);
+    }
+    const left = X(TERMINAL.x0);
+    const right = X(TERMINAL.x1);
+    const base = Z(TERMINAL.y + TERMINAL.depth / 2);   // front wall meets the pavement
+    const wallH = 66;
+    const top = base - wallH;
+
+    // facade
+    g.fillStyle = PAL.wall;
+    g.fillRect(left, top, right - left, wallH);
+    g.fillStyle = PAL.wallShade;
+    g.fillRect(left, base - 4, right - left, 4);
+
+    // windows: two rows, one pane every 2.2 units
+    for (let x = 1.5; x < 47; x += 2.4) {
+      const wx = Math.round(X(x));
+      for (const row of [0, 1]) {
+        const wy = Math.round(top + 8 + row * 12);
+        g.fillStyle = "#8a6f52";
+        g.fillRect(wx - 1, wy - 1, 11, 9);
+        g.fillStyle = PAL.window;
+        g.fillRect(wx, wy, 9, 7);
+        g.fillStyle = PAL.windowLit;
+        g.fillRect(wx + 1, wy + 1, 3, 2);
+      }
+    }
+
+    // ground floor: a darker plinth, shopfronts and columns
+    g.fillStyle = "#e2cfae";
+    g.fillRect(left, base - 26, right - left, 26);
+    let kiosk = 0;
+    for (let x = 1; x < 47; x += 3.2) {
+      const wx = Math.round(X(x));
+      const lit = kiosk++ % 3 === 0;
+      g.fillStyle = lit ? "#6c5a3f" : "#3f5561";
+      g.fillRect(wx, base - 22, 22, 16);
+      g.fillStyle = lit ? "#f2d79a" : "#e9c887";
+      g.fillRect(wx + 1, base - 21, 20, 2);
+      g.fillStyle = lit ? "rgba(255,225,160,0.35)" : "rgba(255,255,255,0.10)";
+      g.fillRect(wx + 1, base - 19, lit ? 20 : 6, 13);
+    }
+    g.fillStyle = "#c9b494";
+    for (let x = 0; x < 48; x += 6.4) g.fillRect(Math.round(X(x)), base - 26, 2, 26);
+    g.fillStyle = "#b9a385";
+    g.fillRect(left, base - 4, right - left, 4);
+
+    // shadow cast by the eave across the upper wall
+    g.fillStyle = "rgba(40,30,20,0.10)";
+    g.fillRect(left, top, right - left, 5);
+
+    // the building's own shadow falling onto the pavement
+    for (let i = 0; i < 6; i++) {
+      g.fillStyle = `rgba(40,32,22,${0.10 - i * 0.015})`;
+      g.fillRect(left, base + i, right - left, 1);
+    }
+
+    // doors, lit from inside
+    for (const [dx] of DOORS) {
+      const wx = Math.round(X(dx) - 6);
+      g.fillStyle = PAL.door;
+      g.fillRect(wx, base - 16, 12, 16);
+      g.fillStyle = "#e8c27a";
+      g.fillRect(wx + 1, base - 15, 4, 14);
+      g.fillStyle = "#f6dfae";
+      g.fillRect(wx + 1, base - 15, 4, 2);
+    }
+
+    // roof: eave slab with a lit ridge
+    g.fillStyle = PAL.roofDark;
+    g.fillRect(left - 3, top - 7, right - left + 6, 8);
+    g.fillStyle = PAL.roof;
+    g.fillRect(left - 3, top - 6, right - left + 6, 5);
+    g.fillStyle = PAL.roofLight;
+    g.fillRect(left - 3, top - 6, right - left + 6, 1);
+
+    // canopy over the doors, with a shadow on the wall
+    const cLeft = X(12.5), cRight = X(23.5);
+    g.fillStyle = "rgba(30,26,20,0.18)";
+    g.fillRect(cLeft, base - 4, cRight - cLeft, 4);
+    g.fillStyle = "#2f7f6b";
+    g.fillRect(cLeft, base - 9, cRight - cLeft, 5);
+    g.fillStyle = "#3d9d84";
+    g.fillRect(cLeft, base - 9, cRight - cLeft, 1);
+
+    // sign plate sits on the roof band, not floating in the grass
+    const sw = textWidth("HUANGGANG PORT", 2) + 12;
+    const sx = Math.round(X(20) - sw / 2);
+    const sy = top - 6;
+    g.fillStyle = "#22303c";
+    g.fillRect(sx, sy - 9, sw, 14);
+    g.fillStyle = "#31505f";
+    g.fillRect(sx, sy - 9, sw, 1);
+    drawText(g, "HUANGGANG PORT", sx + 6, sy - 6, "#f6f1e4", 2);
+  }
+
+  _drawPropsAndPeople() {
+    const items = [];
+
+    // static props
+    const props = [
+      // benches along the waiting hall
+      { kind: "bench", x: 6, z: 1.2 }, { kind: "bench", x: 10, z: 1.2 },
+      { kind: "bench", x: 26, z: 9.2 }, { kind: "bench", x: 30, z: 9.2 },
+      { kind: "bin", x: 12.5, z: 1.0 }, { kind: "bin", x: 33, z: 9.0 },
+      // lamp posts down the hall
+      { kind: "lamp", x: 8, z: 7.4 }, { kind: "lamp", x: 20, z: 7.4 },
+      { kind: "lamp", x: 32, z: 7.4 }, { kind: "lamp", x: 20, z: 15.4 },
+      { kind: "lamp", x: 32, z: 15.4 }, { kind: "lamp", x: 20, z: 23.4 },
+      // lane signs
+      { kind: "sign", x: 11.5, z: 2.4 },
+      { kind: "sign", x: 11.5, z: 10.4 },
+      { kind: "sign", x: 11.5, z: 18.4 },
+      // planting at the edges
+      { kind: "tree", x: -2.6, z: 8 }, { kind: "tree", x: -2.6, z: 17 },
+      { kind: "tree", x: 49.2, z: 6 }, { kind: "tree", x: 49.2, z: 15 },
+      // island planting between the lanes
+      { kind: "planter", x: 6, z: 8 }, { kind: "planter", x: 18, z: 8 },
+      { kind: "planter", x: 30, z: 8 }, { kind: "planter", x: 42, z: 8 },
+      { kind: "planter", x: 6, z: 16 }, { kind: "planter", x: 18, z: 16 },
+      { kind: "planter", x: 30, z: 16 }, { kind: "planter", x: 42, z: 16 },
+      { kind: "bin", x: 12, z: 8 }, { kind: "bin", x: 24, z: 16 },
+      { kind: "bush", x: 3, z: -2.4 }, { kind: "bush", x: 25, z: -2.4 },
+      { kind: "bush", x: 36, z: -2.4 }, { kind: "bush", x: 46, z: -2.4 },
+    ];
+    for (const p of props) items.push({ z: p.z, kind: p.kind, prop: p });
+
+    for (const [, e] of this.taxis) items.push({ z: e.z, kind: "taxi", e });
+    for (const [, e] of this.people) items.push({ z: e.z, kind: "person", e });
+
+    items.sort((a, b) => a.z - b.z || a.kind.localeCompare(b.kind));
+
+    for (const it of items) {
+      if (it.kind === "taxi") this._taxi(it.e);
+      else if (it.kind === "person") this._person(it.e);
+      else this._prop(it.prop);
+    }
+  }
+
+  _shadow(x, y, w) {
+    const g = this.g;
+    g.fillStyle = "rgba(32,26,20,0.20)";
+    g.beginPath();
+    g.ellipse(Math.round(x), Math.round(y), w, Math.max(1, Math.round(w * 0.42)), 0, 0, Math.PI * 2);
+    g.fill();
+  }
+
+  _taxi(e) {
+    const g = this.g;
+    const x = X(e.x);
+    const y = Z(e.z);
+    this._shadow(x, y + 1, 8);
+
+    const spr = TAXI_SIDE[CLS[e.cls]] || TAXI_SIDE.urban;
+    const shrink = e.parked ? 0.86 : 1;
+    const w = Math.round(spr.width * shrink);
+    const h = Math.round(spr.height * shrink);
+    g.save();
+    if (!e.parked && e.face < 0) {
+      g.translate(Math.round(x), Math.round(y));
+      g.scale(-1, 1);
+      g.drawImage(spr, -Math.round(w / 2), -h, w, h);
+    } else {
+      g.drawImage(spr, Math.round(x - w / 2), Math.round(y - h), w, h);
+    }
+    g.restore();
+
+    // roof sign — the only bright mark at this zoom
+    if (!e.parked) {
+      g.fillStyle = "#fbf7ec";
+      g.fillRect(Math.round(x - 3), Math.round(y - h - 3), 6, 2);
+      g.fillStyle = LIVERY[CLS[e.cls]];
+      g.fillRect(Math.round(x - 2), Math.round(y - h - 3), 4, 1);
+    }
+  }
+
+  _person(e) {
+    const g = this.g;
+    const x = X(e.x);
+    const y = Z(e.z);
+    // one in four wears the lane colour; the rest are just people
+    const wearLane = (e.seed % 4) === 0;
+    const frames = wearLane
+      ? (SPR.person[CLS[e.cls]] || SPR.person.urban)
+      : SPR.crowd[e.seed % SPR.crowd.length];
+    const moving = e.moving || (e.leaving && e.wait <= 0);
+    const f = moving ? 1 + (Math.floor(this.time * 7 + (e.seed || 0)) % 2) : 0;
+    const spr = frames[Math.min(f, frames.length - 1)];
+
+    this._shadow(x, y + 1, 4);
+    g.save();
+    if (e.face < 0) {
+      g.translate(Math.round(x), Math.round(y));
+      g.scale(-1, 1);
+      g.drawImage(spr, -3, -spr.height);
+    } else {
+      g.drawImage(spr, Math.round(x - 3), Math.round(y - spr.height));
+    }
+    g.restore();
+  }
+
+  _prop(p) {
+    const g = this.g;
+    const x = X(p.x);
+    const y = Z(p.z);
+    if (p.kind === "planter") {
+      this._shadow(x, y + 1, 8);
+      g.fillStyle = "#b9ae99";
+      g.fillRect(Math.round(x - 8), Math.round(y - 6), 16, 7);
+      g.fillStyle = "#cfc4ae";
+      g.fillRect(Math.round(x - 8), Math.round(y - 6), 16, 1);
+      g.fillStyle = PAL.leafDark;
+      g.fillRect(Math.round(x - 7), Math.round(y - 7), 14, 3);
+      g.fillStyle = PAL.leaf;
+      g.fillRect(Math.round(x - 6), Math.round(y - 11), 12, 5);
+      g.fillStyle = PAL.leafLight;
+      g.fillRect(Math.round(x - 5), Math.round(y - 11), 5, 2);
+      return;
+    }
+    let spr = SPR[p.kind];
+    if (!spr) return;
+    if (p.kind === "lamp") {
+      g.fillStyle = "#8f8778";
+      g.fillRect(Math.round(x - 2), Math.round(y - 2), 5, 3);
+    }
+    this._shadow(x, y + 1, p.kind === "tree" ? 7 : 4);
+    g.drawImage(spr, Math.round(x - spr.width / 2), Math.round(y - spr.height));
+
+  }
+
+  _drawWeather() {
+    const g = this.g;
+    if (this.quality === "low") return;
+
+    // slow cloud shadows drifting across the rank
+    g.save();
+    g.beginPath();
+    g.rect(0, Z(-3), W, Z(31) - Z(-3));
+    g.clip();
+    g.globalAlpha = 0.035;
+    g.fillStyle = "#26313a";
+    for (let i = 0; i < 3; i++) {
+      const cx = ((this.time * 6 + i * 260) % (W + 300)) - 150;
+      const cy = Z(-1) + i * 90;
+      g.beginPath();
+      g.ellipse(cx, cy, 130, 46, 0, 0, Math.PI * 2);
+      g.fill();
+    }
+    g.restore();
+
+    // hour tint: warm early, cool late
+    const t = Math.min(1, Math.max(0, (this.hour - 8) / 12));
+    g.globalAlpha = 0.10 * (1 - t);
+    g.fillStyle = "#ff9a4d";
+    g.fillRect(0, 0, W, H);
+    g.globalAlpha = 0.14 * Math.max(0, t - 0.55) / 0.45;
+    g.fillStyle = "#2b4a7a";
+    g.fillRect(0, 0, W, H);
+    g.globalAlpha = 1;
+  }
+
+  _drawFrame() {
+    const g = this.g;
+    // 1px vignette so the edges settle into the page
+    g.fillStyle = "rgba(24,20,16,0.10)";
+    g.fillRect(0, 0, W, 1);
+    g.fillRect(0, H - 1, W, 1);
+    g.fillRect(0, 0, 1, H);
+    g.fillRect(W - 1, 0, 1, H);
+  }
+}
