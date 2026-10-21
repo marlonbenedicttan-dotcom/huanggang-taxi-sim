@@ -92,6 +92,12 @@ python tests/test_engine.py               # invariant tests
 
 ## 2b. Interactive 3D simulator (website)
 
+> **Visual direction.** The 3D view uses a line-art isometric style: white fills,
+> ink silhouettes and one accent colour. It was inspired by
+> [Khalidabdi1/factory](https://github.com/Khalidabdi1/factory) (MIT), a browser
+> isometric world that includes a container port. No code or assets were copied
+> — only the look — but the debt is worth stating.
+
 `web/` is a self-contained static site: a 3D view of the taxi hall with sliders
 for every input. It is the same model as the Python engine, re-implemented in
 JavaScript so it can be hosted for free with **no server and no cold start**.

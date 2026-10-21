@@ -22,23 +22,16 @@ const PAX_CAP = 90;
 
 /* Crossy-Road palette: saturated, high contrast, no gradients. */
 const C = {
-  grass: 0x8ed36a,
-  grassAlt: 0x84cc60,
-  road: 0x66707c,
-  roadAlt: 0x5f6974,
-  pave: 0xd9d3c4,
-  paveAlt: 0xd2ccbc,
-  kerb: 0xf3efe4,
-  white: 0xf7f7f2,
-  glass: 0x2f3b4b,
-  dark: 0x232a33,
-  trunk: 0x7a5235,
-  leaf: 0x3fa45a,
-  leafAlt: 0x4fb96a,
-  roofA: 0xe0533f,
-  roofB: 0x3f7cbf,
-  roofC: 0xd9a441,
-  wall: 0xf1ece1,
+  paper: 0xffffff,
+  paperShade: 0xeeece6,
+  road: 0xd2cfc5,
+  roadEdge: 0xc9c6bc,
+  water: 0xeef4f6,
+  ink: 0x1b1f24,
+  accent: 0xd94f3d,
+  accent2: 0x2f6f97,
+  roof: 0xffffff,
+  glass: 0x8f969d,
 };
 
 /* ------------------------------------------------------------------ */
@@ -65,7 +58,7 @@ export class Scene3D {
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
 
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0xbfe3f5);
+    this.scene.background = new THREE.Color(0xf4f3ef);
 
     // orthographic isometric camera — the Crossy Road look
     this.camera = new THREE.OrthographicCamera(-40, 40, 30, -30, -200, 400);
@@ -177,16 +170,42 @@ export class Scene3D {
   }
 
   /* ---------------- helpers ---------------- */
+  /** A box with a black silhouette behind it — the whole look in one helper. */
   box(w, h, d, color, opts = {}) {
-    const m = new THREE.Mesh(
-      new THREE.BoxGeometry(w, h, d),
-      new THREE.MeshLambertMaterial({ color, flatShading: true, ...opts })
+    const geo = new THREE.BoxGeometry(w, h, d);
+    const m = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ color, ...opts }));
+
+    const edge = new THREE.Mesh(
+      geo,
+      new THREE.MeshBasicMaterial({ color: C.ink, side: THREE.BackSide })
     );
+    edge.scale.setScalar(1.035);
+    m.add(edge);
     return m;
   }
 
+  /** Place a baked kit model (already normalised: base at y=0, centred x/z). */
+  addModel(parts, x, z, rotY = 0, scale = 1, y = 0) {
+    if (!parts) return null;
+    const g = new THREE.Group();
+    for (const p of parts) {
+      let mat = p.material;
+      if (!mat.userData.warmed) {
+        mat = mat.clone();
+        mat.color = mat.color.clone().multiply(new THREE.Color(0xfff0d8));
+        mat.userData.warmed = true;
+      }
+      g.add(new THREE.Mesh(p.geometry, mat));
+    }
+    g.position.set(x, y, z);
+    g.rotation.y = rotY;
+    g.scale.setScalar(scale);
+    this.root.add(g);
+    return g;
+  }
+
   /** One draw call for a repeated static prop. */
-  addInstanced(geo, material, spots) {
+  addInstanced(geo, material, spots, outline = true) {
     const mesh = new THREE.InstancedMesh(geo, material, spots.length);
     const m = new THREE.Matrix4();
     spots.forEach(([x, y, z, s = 1], i) => {
@@ -195,6 +214,21 @@ export class Scene3D {
     });
     mesh.instanceMatrix.needsUpdate = true;
     this.root.add(mesh);
+
+    if (outline) {
+      const edge = new THREE.InstancedMesh(
+        geo,
+        new THREE.MeshBasicMaterial({ color: C.ink, side: THREE.BackSide }),
+        spots.length
+      );
+      spots.forEach(([x, y, z, s = 1], i) => {
+        m.compose(new THREE.Vector3(x, y, z), new THREE.Quaternion(),
+          new THREE.Vector3(s * 1.07, s * 1.05, s * 1.07));
+        edge.setMatrixAt(i, m);
+      });
+      edge.instanceMatrix.needsUpdate = true;
+      this.root.add(edge);
+    }
     return mesh;
   }
 
@@ -239,26 +273,28 @@ export class Scene3D {
     this.meta = meta;
     this.bayMeshes = [];
 
-    this.root.add(this.plain(160, 160, C.grass, 0, -0.06, 10));
+    this.root.add(this.plain(160, 160, C.paperShade, 0, -0.06, 10));
 
     // tarmac apron under the operational area
     this.root.add(this.plain(56, 28, C.road, 22.5, -0.02, 10.5));
-    this.root.add(this.plain(56, 5.6, C.pave, 22.5, 0.0, -3.4));
+    this.root.add(this.plain(56, 5.6, C.paper, 22.5, 0.0, -3.4));
 
     // three lanes: road strips with a coloured kerb stripe
     for (const id of [0, 1, 2]) {
       const y = LANES[CLS[id]];
-      this.root.add(this.plain(50, 4.9, C.roadAlt, 23, 0.01, y));
-      for (const dz of [-2.5, 2.5]) {
-        this.root.add(this.plain(50, 0.2, CLS_COLOR[id], 23, 0.02, y + dz));
+      this.root.add(this.plain(50, 4.9, C.road, 23, 0.01, y));
+      for (const dz of [-2.45, 2.45]) {
+        this.root.add(this.plain(50, 0.06, 0xb9b6ad, 23, 0.02, y + dz));
       }
+      // a single coloured line keeps the class readable without painting the road
+      this.root.add(this.plain(50, 0.12, CLS_COLOR[id], 23, 0.021, y + 2.2));
       // lane names live in the HTML counters; painted kerbs carry the colour
     }
 
     // approach road in front
     this.root.add(this.plain(64, 6, C.road, 21, 0.012, 25.4));
     for (let x = -8; x < 52; x += 4.4) {
-      this.root.add(this.plain(2.2, 0.16, C.white, x, 0.022, 25.4));
+      this.root.add(this.plain(2.2, 0.16, C.roadEdge, x, 0.022, 25.4));
     }
 
     this._buildBuffer();
@@ -342,19 +378,24 @@ export class Scene3D {
     const T = TERMINAL;
 
     // main hall: a long block with a coloured roof
-    const hall = this.box(40, 4.1, 6, C.wall);
-    hall.position.set(22, 2.05, T.y - 3.0);
-    this.root.add(hall);
-
-    const roof = this.box(41, 0.45, 6.6, C.roofA);
-    roof.position.set(22, 4.32, T.y - 3.0);
-    this.root.add(roof);
-
-    // window bands
-    for (const y of [1.3, 3.0]) {
-      const band = this.box(38, 0.75, 0.1, C.glass);
-      band.position.set(22, y, T.y + 0.05);
-      this.root.add(band);
+    const kit = null;
+    if (kit && kit.length) {
+      // three kit buildings form the terminal frontage
+      [[7, 5.4], [22, 6.0], [37, 5.2]].forEach(([x, h], i) => {
+        this.addModel(kit[i % kit.length], x, T.y - 4.5, 0, h / 5, 0);
+      });
+    } else {
+      const hall = this.box(40, 4.1, 6, C.paper);
+      hall.position.set(22, 2.05, T.y - 3.0);
+      this.root.add(hall);
+      const roof = this.box(41, 0.45, 6.6, C.paper);
+      roof.position.set(22, 4.32, T.y - 3.0);
+      this.root.add(roof);
+      for (const y of [1.3, 3.0]) {
+        const band = this.box(38, 0.75, 0.1, C.glass);
+        band.position.set(22, y, T.y + 0.05);
+        this.root.add(band);
+      }
     }
 
     // recessed entrance
@@ -362,45 +403,53 @@ export class Scene3D {
     recess.position.set(17.6, 1.5, T.y - 0.6);
     this.root.add(recess);
     for (let i = 0; i < 2; i++) {
-      const step = this.box(9.4 - i * 0.5, 0.16, 0.6, C.kerb);
+      const step = this.box(9.4 - i * 0.5, 0.16, 0.6, C.paperShade);
       step.position.set(17.6, 0.08 + i * 0.16, T.y + 1.3 + i * 0.55);
       this.root.add(step);
     }
 
     // entrance canopy
-    const canopy = this.box(13, 0.3, 3.2, C.roofB);
+    const canopy = this.box(13, 0.3, 3.2, C.accent2);
     canopy.position.set(17.6, 3.3, T.y + 2.2);
     this.root.add(canopy);
     for (const x of [11.6, 23.6]) {
-      const col = this.box(0.5, 3.3, 0.5, C.kerb);
+      const col = this.box(0.5, 3.3, 0.5, C.paperShade);
       col.position.set(x, 1.65, T.y + 4.4);
       this.root.add(col);
     }
 
     // sign board above the entrance
-    const board = this.box(11, 1.2, 0.25, C.white);
+    const board = this.box(11, 1.2, 0.25, C.paper);
     board.position.set(17.6, 5.35, T.y - 0.2);
     this.root.add(board);
     const sign = this.label("HUANGGANG PORT", "#22303c", 0.58);
     sign.position.set(17.6, 5.35, T.y + 0.02);
     this.root.add(sign);
 
-    // a second row of blocks for skyline depth
-    const blocks = [
-      [-6, 7, C.roofC], [4, 9, C.roofB], [14, 6, C.roofA],
-      [30, 8, C.roofB], [42, 10, C.roofC], [52, 7, C.roofA],
-    ];
-    for (const [x, h, roofColor] of blocks) {
-      const b = this.box(9, h, 8, C.wall);
-      b.position.set(x, h / 2, -16);
-      this.root.add(b);
-      const r = this.box(9.6, 0.5, 8.6, roofColor);
-      r.position.set(x, h + 0.25, -16);
-      this.root.add(r);
-      for (const wy of [h * 0.35, h * 0.7]) {
-        const wb = this.box(8, 0.6, 0.1, C.glass);
-        wb.position.set(x, wy, -11.95);
-        this.root.add(wb);
+    // skyline: kit buildings if they loaded, simple blocks otherwise
+    const skyline = null;
+    if (skyline && skyline.length) {
+      const row1 = [[1, -13.5, 6.4], [11, -15, 5.2], [21, -13, 6.8], [32, -14.5, 5.6], [43, -13.5, 6.2]];
+      row1.forEach(([x, z, h], i) => this.addModel(skyline[i % skyline.length], x, z, 0, h / 5, 0));
+      const row2 = [[6, -22, 8.5], [20, -23, 7.4], [34, -21.5, 9.2], [47, -22.5, 7.0]];
+      row2.forEach(([x, z, h], i) => this.addModel(skyline[(i + 1) % skyline.length], x, z, 0, h / 5, 0));
+    } else {
+      const blocks = [
+        [-6, 7, C.paper], [4, 9, C.accent2], [14, 6, C.paper],
+        [30, 8, C.accent2], [42, 10, C.paper], [52, 7, C.paper],
+      ];
+      for (const [x, h, roofColor] of blocks) {
+        const b = this.box(9, h, 8, C.paper);
+        b.position.set(x, h / 2, -16);
+        this.root.add(b);
+        const r = this.box(9.6, 0.5, 8.6, roofColor);
+        r.position.set(x, h + 0.25, -16);
+        this.root.add(r);
+        for (const wy of [h * 0.35, h * 0.7]) {
+          const wb = this.box(8, 0.6, 0.1, C.glass);
+          wb.position.set(x, wy, -11.95);
+          this.root.add(wb);
+        }
       }
     }
   }
@@ -409,21 +458,21 @@ export class Scene3D {
   _buildBayCanopy() {
     const flat = (c) => new THREE.MeshLambertMaterial({ color: c, flatShading: true });
     const posts = [];
-    for (const x of [34.2, 42.2]) {
-      for (let z = 1; z <= 22; z += 4.2) posts.push([x, 1.6, z]);
+    for (const x of [35.0, 41.0]) {
+      for (let z = 2; z <= 21; z += 4.5) posts.push([x, 2.0, z]);
     }
-    this.addInstanced(new THREE.BoxGeometry(0.22, 3.2, 0.22), flat(0xe9e4d6), posts);
+    this.addInstanced(new THREE.BoxGeometry(0.2, 4.0, 0.2), flat(0xe9e4d6), posts);
 
-    const roof = this.box(8.6, 0.24, 22, C.white);
-    roof.position.set(38.0, 3.75, 11.5);
+    const roof = this.box(5.4, 0.2, 19, C.paper);
+    roof.position.set(38.0, 4.3, 11.5);
     this.root.add(roof);
 
     // coloured fascia so the roof reads as a structure, not a blank card
-    const trim = this.box(8.8, 0.5, 0.35, C.roofB);
-    trim.position.set(38.0, 3.55, 0.5);
+    const trim = this.box(6.6, 0.4, 0.3, C.accent2);
+    trim.position.set(38.0, 4.2, 1.6);
     this.root.add(trim);
-    const trim2 = this.box(8.8, 0.5, 0.35, C.roofB);
-    trim2.position.set(38.0, 3.55, 22.5);
+    const trim2 = this.box(6.6, 0.4, 0.3, C.accent2);
+    trim2.position.set(38.0, 4.2, 21.4);
     this.root.add(trim2);
 
     // chevrons on the tarmac leading into the bays
@@ -454,7 +503,7 @@ export class Scene3D {
     this.addInstanced(new THREE.BoxGeometry(1.1, 0.02, 0.9), flat(0xdfe6ee), arrows);
 
     // curb along the frontage
-    const kerb = this.box(52, 0.22, 0.4, C.kerb);
+    const kerb = this.box(52, 0.22, 0.4, C.paperShade);
     kerb.position.set(22, 0.11, -0.9);
     this.root.add(kerb);
   }
@@ -468,12 +517,12 @@ export class Scene3D {
     ];
     const flat = (c) => new THREE.MeshLambertMaterial({ color: c, flatShading: true });
 
-    this.addInstanced(new THREE.CylinderGeometry(0.16, 0.2, 1.0, 6), flat(C.trunk),
+    this.addInstanced(new THREE.CylinderGeometry(0.16, 0.2, 1.0, 6), flat(C.ink),
       spots.map(([x, z]) => [x, 0.5, z]));
-    this.addInstanced(new THREE.ConeGeometry(0.85, 1.5, 7), flat(C.leaf),
-      spots.map(([x, z]) => [x, 1.6, z]));
-    this.addInstanced(new THREE.ConeGeometry(0.62, 1.1, 7), flat(C.leafAlt),
-      spots.map(([x, z]) => [x, 2.3, z]));
+    this.addInstanced(new THREE.ConeGeometry(0.8, 1.4, 7), flat(0xf6f5f0),
+      spots.map(([x, z]) => [x, 1.55, z]));
+    this.addInstanced(new THREE.ConeGeometry(0.58, 1.0, 7), flat(0xffffff),
+      spots.map(([x, z]) => [x, 2.2, z]));
     this.addInstanced(new THREE.CircleGeometry(0.95, 10),
       new THREE.MeshBasicMaterial({ color: 0x1d2a24, transparent: true, opacity: 0.14, depthWrite: false }),
       spots.map(([x, z]) => [x, 0.02, z]));
@@ -532,12 +581,19 @@ export class Scene3D {
 
     // taxi: coloured body, white cabin, dark wheels
     this.taxiShell = this._pool(new THREE.BoxGeometry(1.0, 0.34, 0.56), mat(0xffffff), TAXI_CAP, true);
-    this.taxiRoof = this._pool(new THREE.BoxGeometry(0.52, 0.3, 0.5), mat(C.white), TAXI_CAP);
-    this.taxiDark = this._pool(new THREE.BoxGeometry(1.02, 0.12, 0.58), mat(C.dark), TAXI_CAP);
+    this.taxiRoof = this._pool(new THREE.BoxGeometry(0.52, 0.3, 0.5), mat(C.paper), TAXI_CAP);
+    this.taxiDark = this._pool(new THREE.BoxGeometry(1.02, 0.12, 0.58), mat(C.ink), TAXI_CAP);
     this.taxiShadow = this._pool(new THREE.CircleGeometry(0.55, 12), new THREE.MeshBasicMaterial({
       color: 0x1d2a24, transparent: true, opacity: 0.18, depthWrite: false,
     }), TAXI_CAP);
     this.taxiShadow.geometry.rotateX(-Math.PI / 2);
+
+    // ink silhouette for the taxi body
+    this.taxiEdge = this._pool(
+      new THREE.BoxGeometry(1.0, 0.34, 0.56),
+      new THREE.MeshBasicMaterial({ color: C.ink, side: THREE.BackSide }),
+      TAXI_CAP
+    );
 
     // person: coloured body + skin head
     this.paxMesh = [0, 1, 2].map((c) =>
@@ -548,6 +604,12 @@ export class Scene3D {
       color: 0x1d2a24, transparent: true, opacity: 0.16, depthWrite: false,
     }), PAX_CAP);
     this.paxShadow.geometry.rotateX(-Math.PI / 2);
+
+    this.paxEdge = this._pool(
+      new THREE.BoxGeometry(0.34, 0.44, 0.28),
+      new THREE.MeshBasicMaterial({ color: C.ink, side: THREE.BackSide }),
+      PAX_CAP
+    );
   }
 
   attachLabels(host) {
@@ -693,6 +755,8 @@ export class Scene3D {
       q.setFromAxisAngle(up, e.yaw || 0);
       m.compose(new THREE.Vector3(e.x, 0.3, e.z), q, new THREE.Vector3(1, 1, 1));
       this.taxiShell.setMatrixAt(n, m);
+      m.compose(new THREE.Vector3(e.x, 0.3, e.z), q, new THREE.Vector3(1.05, 1.08, 1.06));
+      this.taxiEdge.setMatrixAt(n, m);
       col.setHex(CLS_COLOR[e.cls] ?? 0xffffff);
       this.taxiShell.setColorAt(n, col);
 
@@ -704,7 +768,7 @@ export class Scene3D {
       this.taxiShadow.setMatrixAt(n, m);
       n++;
     }
-    for (const mesh of [this.taxiShell, this.taxiRoof, this.taxiDark, this.taxiShadow]) {
+    for (const mesh of [this.taxiShell, this.taxiRoof, this.taxiDark, this.taxiShadow, this.taxiEdge]) {
       mesh.count = n;
       mesh.instanceMatrix.needsUpdate = true;
     }
@@ -744,6 +808,9 @@ export class Scene3D {
 
       m.compose(new THREE.Vector3(e.x, 0.22 + bob, e.z), new THREE.Quaternion(), new THREE.Vector3(s, s, s));
       this.paxMesh[c].setMatrixAt(i, m);
+      m.compose(new THREE.Vector3(e.x, 0.22 + bob, e.z), new THREE.Quaternion(),
+        new THREE.Vector3(s * 1.06, s * 1.08, s * 1.06));
+      this.paxEdge.setMatrixAt(total, m);
       m.compose(new THREE.Vector3(e.x, 0.58 + bob, e.z), new THREE.Quaternion(), new THREE.Vector3(s, s, s));
       this.paxHead.setMatrixAt(total, m);
       m.compose(new THREE.Vector3(e.x, 0.02, e.z), new THREE.Quaternion(), new THREE.Vector3(s, s, 1));
@@ -756,6 +823,8 @@ export class Scene3D {
       this.paxMesh[c].count = counts[c];
       this.paxMesh[c].instanceMatrix.needsUpdate = true;
     }
+    this.paxEdge.count = total;
+    this.paxEdge.instanceMatrix.needsUpdate = true;
     this.paxHead.count = total;
     this.paxHead.instanceMatrix.needsUpdate = true;
     this.paxShadow.count = total;
