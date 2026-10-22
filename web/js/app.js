@@ -463,7 +463,15 @@ function run() {
   const t0 = performance.now();
   const res = runSimulation(cfg, state.seed);
   const ms = performance.now() - t0;
-  state.baseline = runSimulation(buildConfig(referenceValues()), state.seed).metrics;
+
+  // the reference run only depends on demand, window and seed — recomputing it
+  // on every policy toggle doubled the cost of each tap for nothing
+  const refCfg = buildConfig(referenceValues());
+  const refKey = JSON.stringify({ ...refCfg, anim: null });
+  if (state.baselineKey !== refKey) {
+    state.baseline = runSimulation(refCfg, state.seed).metrics;
+    state.baselineKey = refKey;
+  }
 
   state.frames = res.frames;
   state.meta = res.meta;
@@ -720,6 +728,8 @@ function dumpDiag() {
   });
 }
 
+let lastFrameIndex = -1;
+
 function loop(now) {
   // clamp: a negative or huge delta (first frame, tab wake-up) must never be
   // fed into the animation maths — it used to mirror and explode the meshes
@@ -736,12 +746,15 @@ function loop(now) {
       state.frames.length - 1,
       Math.max(0, Math.round((state.playT - state.from) / state.step))
     );
-    scene.sync(state.frames[i]);
-    updateHud(state.frames[i]);
-
-    // redraw chart + playhead (cheap: a few hundred points)
-    drawChart();
-    drawPlayhead();
+    // only touch the scene + DOM when the frame actually moves; the chart used
+    // to be repainted 60 times a second for a playhead that moves eight
+    if (i !== lastFrameIndex) {
+      lastFrameIndex = i;
+      scene.sync(state.frames[i]);
+      updateHud(state.frames[i]);
+      drawChart();
+      drawPlayhead();
+    }
   }
 
   const hour = (state.meta ? state.meta.startHour : 8) + state.playT / 60;
@@ -958,7 +971,7 @@ function renderCards() {
         paintCards();
         renderPilot();
         setPreset();
-        run();
+        scheduleRun(90);
       });
 
       const note = document.createElement("p");
@@ -1018,47 +1031,76 @@ function paintCards() {
  *  thread is never blocked for more than a single simulation. */
 let effectsToken = 0;
 
-function computeEffects() {
-  const token = ++effectsToken;
-  const seeds = [11, 12, 13, 14, 15, 16, 17, 18, 19, 20];
+/* ---------------- simulation worker ---------------- */
+let simWorker = null;
+let simJobId = 0;
+const simPending = new Map();
 
-  const stats = (cfg) => {
-    // everyone counts, including people who gave up: otherwise a policy can
-    // "improve" mean wait by pushing the longest waiters into abandonment
-    const vals = seeds.map((s) => runSimulation(cfg, s).metrics.waitMeanInclAbandon);
-    const m = vals.reduce((a, v) => a + v, 0) / vals.length;
-    const sd = Math.sqrt(vals.reduce((a, v) => a + (v - m) ** 2, 0) / (vals.length - 1));
-    return { m, se: sd / Math.sqrt(vals.length) };
+function initWorker() {
+  try {
+    simWorker = new Worker("./js/sim-worker.js", { type: "module" });
+    simWorker.onmessage = (e) => {
+      const { id, values, error } = e.data;
+      const job = simPending.get(id);
+      if (!job) return;
+      simPending.delete(id);
+      if (error) job.reject(new Error(error));
+      else job.resolve(values);
+    };
+    simWorker.onerror = () => { simWorker = null; };
+  } catch {
+    simWorker = null;
+  }
+}
+
+/** Inclusive mean wait for one config across seeds, on a worker if possible. */
+function batchWait(cfg, seeds) {
+  if (!simWorker) {
+    return Promise.resolve(seeds.map((s) => runSimulation(cfg, s).metrics.waitMeanInclAbandon));
+  }
+  const id = ++simJobId;
+  return new Promise((resolve, reject) => {
+    simPending.set(id, { resolve, reject });
+    simWorker.postMessage({ id, jobs: seeds.map((seed) => ({ cfg, seed })) });
+  });
+}
+
+async function computeEffects() {
+  const token = ++effectsToken;
+  const seeds = [11, 12, 13, 14, 15, 16, 17, 18];
+
+  for (const c of CARDS) { c.effect = null; c.effectSE = null; }
+  paintCards();
+
+  const stats = (values) => {
+    const clean = values.filter((v) => Number.isFinite(v));
+    if (!clean.length) return null;
+    const m = clean.reduce((a, v) => a + v, 0) / clean.length;
+    const sd = Math.sqrt(clean.reduce((a, v) => a + (v - m) ** 2, 0) / Math.max(1, clean.length - 1));
+    return { m, se: sd / Math.sqrt(clean.length) };
   };
 
-  let i = 0;
-  for (const c of CARDS) { c.effect = null; c.effectSE = null; }
-  renderCards();
-
-  // Each card is measured by switching *it* on and off with everything else
-  // left as the user has it. Measuring against a clean baseline made every
-  // capacity policy read ≈0 while the paper ticket was starving the hall.
-  const step = () => {
-    if (token !== effectsToken) return;      // superseded by a newer scenario
+  for (let i = 0; i < CARDS.length; i++) {
+    if (token !== effectsToken) return;          // a newer scenario took over
+    const card = CARDS[i];
     try {
-      if (i < CARDS.length) {
-        const card = CARDS[i++];
-        const on = stats(buildConfig({ ...state.values, ...card.on }));
-        const off = stats(buildConfig({ ...state.values, ...card.off }));
+      const [onVals, offVals] = await Promise.all([
+        batchWait(buildConfig({ ...state.values, ...card.on }), seeds),
+        batchWait(buildConfig({ ...state.values, ...card.off }), seeds),
+      ]);
+      if (token !== effectsToken) return;
+      const on = stats(onVals);
+      const off = stats(offVals);
+      if (on && off) {
         card.effect = on.m - off.m;
         card.effectSE = Math.hypot(on.se, off.se);
         card.effectN = seeds.length;
-        paintCards();
-        renderPilot();
-        renderValue();
-      } else {
-        renderValue();
-        return;
       }
+      paintCards();
+      renderPilot();
+      renderValue();
     } catch {}
-    setTimeout(step, 25);
-  };
-  setTimeout(step, 25);
+  }
 }
 
 /** Recompute the effect chips after the scenario settles. */
@@ -1348,6 +1390,7 @@ function loadSharedLink(param) {
 }
 
 function init() {
+  initWorker();
   buildControls();
   syncControls();
   computeBaseline();
@@ -1583,6 +1626,7 @@ function init() {
     buildConfig,
     referenceValues,
     getSceneB: () => sceneB,
+    hasWorker: () => !!simWorker,
     /** Let the walkers reach their targets (used for stills and video). */
     settle(seconds = 3) {
       const hour = (state.meta ? state.meta.startHour : 8) + state.playT / 60;
