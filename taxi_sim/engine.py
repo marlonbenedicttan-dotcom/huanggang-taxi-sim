@@ -87,6 +87,14 @@ class Config:
     backhaul_match: float = 0.0             # 0-1: share of trips with a matched return fare
     port_surcharge_hkd: float = 0.0         # regulated extra fare on port pickups
     wait_allowance_hkd: float = 0.0         # paid per minute waiting in the queue
+    # ---- queue-ticket regime (new Huanggang Port, 2026) -----------------
+    # Every empty taxi must collect a paper ticket at a buffer zone before it
+    # can reach the rank. The taxi trade reports ~8 minutes per trip. That time
+    # is paid by the driver, not the passenger, so it works like a cut in the
+    # supply that turns up: a taxi spends T minutes per port visit, and T + delay
+    # is what the driver now has to spend.
+    port_dwell_min: float = 25.5            # average taxi time at the port (model output)
+    ticket_delay_min: float = 8.0           # 1.5 = digital ticket, 8 = paper ticket
     supply_lag_hours: int = 1               # drivers react one hour late
     supply_flatness: float = 0.55           # 0 = follows demand, 1 = flat
     buffer_capacity: int = 40               # spaces per taxi lane (urban / NT)
@@ -267,6 +275,9 @@ class Simulation:
             + 0.45 * (cfg.port_surcharge_hkd / 50.0)
             + 0.30 * (cfg.wait_allowance_hkd / 4.0)
         )
+        # a driver's visit now costs dwell + ticket time instead of dwell
+        ticket = cfg.port_dwell_min / max(1.0, cfg.port_dwell_min + cfg.ticket_delay_min)
+        incentive *= ticket
         self.supply_ratio = {
             "urban": cfg.taxi_supply_ratio_urban * incentive,
             "nt": cfg.taxi_supply_ratio_nt * incentive,

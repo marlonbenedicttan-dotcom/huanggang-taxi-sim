@@ -73,6 +73,9 @@ export const DEFAULTS = {
   backhaulMatch: 0,
   portSurchargeHkd: 0,
   waitAllowanceHkd: 0,
+  // queue-ticket regime: paper ticket at the buffer costs the driver ~8 min
+  portDwellMin: 25.5,
+  ticketDelayMin: 8,
   supplyLagHours: 2,
   supplyFlatness: 0.55,
   prebookSupplyRatio: 1.15,
@@ -286,11 +289,15 @@ export class Simulation {
     };
     // A port trip is worth less than a city trip while the return leg is a
     // gamble. These policies raise that value, so more drivers accept the run.
-    const incentive =
+    let incentive =
       1 +
       0.6 * (cfg.backhaulMatch || 0) +
       0.45 * ((cfg.portSurchargeHkd || 0) / 50) +
       0.3 * ((cfg.waitAllowanceHkd || 0) / 4);
+
+    // the ticket is driver time, not passenger time: it lengthens every visit
+    const dwell = cfg.portDwellMin ?? 25.5;
+    incentive *= dwell / Math.max(1, dwell + (cfg.ticketDelayMin || 0));
 
     this.supplyRatio = {
       urban: cfg.taxiSupplyRatioUrban * incentive,

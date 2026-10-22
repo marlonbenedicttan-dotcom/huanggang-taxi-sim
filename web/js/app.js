@@ -46,6 +46,13 @@ const GROUPS = [
     ],
   },
   {
+    name: "Queue management",
+    items: [
+      { key: "ticketDelayMin", label: "Queue-ticket delay per taxi", min: 0, max: 10, step: 0.5, unit: "min",
+        hint: "Time a driver loses collecting a ticket at the buffer before reaching the rank. The paper system at the new port costs about 8 minutes per trip; a digital ticket should cost about 1.5." },
+    ],
+  },
+  {
     name: "Driver incentives",
     items: [
       { key: "backhaulMatch", label: "Port trips with a matched return fare", min: 0, max: 1, step: 0.05, pct: true,
@@ -94,7 +101,7 @@ const GROUPS = [
 const POLICY_KEYS = [
   "dispatchIntervalMin", "dispatchBatch", "pooledStands", "appShare",
   "flexShare", "misrouteProb", "stands.urban", "stands.nt", "taxiSupplyRatioNt",
-  "backhaulMatch", "portSurchargeHkd", "waitAllowanceHkd",
+  "backhaulMatch", "portSurchargeHkd", "waitAllowanceHkd", "ticketDelayMin",
 ];
 
 const IS_PHONE =
@@ -381,6 +388,8 @@ function buildConfig(vals = state.values) {
     misrouteProb: valueOf("misrouteProb"),
     appShare: valueOf("appShare"),
     fastCheckinFactor: valueOf("appShare") > 0 ? 0.75 : 1,
+    ticketDelayMin: valueOf("ticketDelayMin"),
+    portDwellMin: 25.5,
     backhaulMatch: valueOf("backhaulMatch"),
     portSurchargeHkd: valueOf("portSurchargeHkd"),
     waitAllowanceHkd: valueOf("waitAllowanceHkd"),
@@ -722,64 +731,38 @@ function updateHud(frame) {
 
 const CARDS = [
   {
-    label: "Guaranteed return fare",
-    on: { backhaulMatch: 0.7 },
-    off: { backhaulMatch: 0 },
-    isOn: (v) => Number(v.backhaulMatch) > 0,
+    label: "Digital queue ticket",
+    on: { ticketDelayMin: 1.5 },
+    off: { ticketDelayMin: 8 },
+    isOn: (v) => Number(v.ticketDelayMin) < 6,
     note:
-      "Match each taxi with a return passenger before it arrives, so the drive back " +
-      "is paid. This is the direct answer to why drivers avoid the port: the fear of " +
-      "an empty return leg. It needs a booking system, not money.",
+      "Replace the physical buffer-zone ticket with a virtual queue: number-plate " +
+      "recognition or app check-in on approach, a call-forward time, and no stop on " +
+      "the way in. This is exactly what the taxi trade asked the Transport Department " +
+      "to review in October 2026 — the paper ticket costs about eight minutes a trip, " +
+      "paid by the driver rather than the passenger.",
   },
   {
-    label: "Port pickup surcharge",
-    on: { portSurchargeHkd: 30 },
-    off: { portSurchargeHkd: 0 },
-    isOn: (v) => Number(v.portSurchargeHkd) > 0,
-    note:
-      "Add a regulated extra fare to trips leaving the port. It raises what the trip " +
-      "is worth, so more drivers come — but the cost lands on the passenger, and it " +
-      "is regressive for short trips.",
-  },
-  {
-    label: "App pre-registration",
+    label: "App / fleet pre-registration",
     on: { appShare: 0.85 },
     off: { appShare: 0 },
     isOn: (v) => Number(v.appShare) > 0,
     note:
-      "Passengers check in on their phone before they arrive: boarding is quicker " +
-      "and the hall knows how many are coming. The biggest software-only win, but it " +
-      "depends on passengers actually adopting the app.",
+      "Passengers check in before they arrive, so boarding is quicker and the hall " +
+      "knows how many are coming. It already exists in a limited form: licensed fleet " +
+      "taxis can be booked, and the terminal has a lounge for their passengers. " +
+      "Extending it to walk-up trips is software, not construction.",
   },
   {
-    label: "Flexible taxis",
-    on: { flexShare: 0.35 },
-    off: { flexShare: 0 },
-    isOn: (v) => Number(v.flexShare) > 0,
-    note:
-      "Let a taxi serve either destination instead of being tied to one queue. " +
-      "Smooths the mismatch between the lanes, but needs a regulatory change and " +
-      "some drivers will refuse the longer trip.",
-  },
-  {
-    label: "Two extra bays",
+    label: "Two extra stands",
     on: { "stands.urban": 10, "stands.nt": 4 },
     off: { "stands.urban": 8, "stands.nt": 3 },
     isOn: (v) => Number(v["stands.urban"]) > 8 || Number(v["stands.nt"]) > 3,
     note:
-      "Build out two more bays. It raises the ceiling on how many taxis can board " +
-      "at once, but it is capital works: slow to deliver and, at this demand, it " +
-      "buys about the same as the app does for a fraction of the cost.",
-  },
-  {
-    label: "Pooled pickup bays",
-    on: { pooledStands: true },
-    off: { pooledStands: false },
-    isOn: (v) => !!v.pooledStands,
-    note:
-      "Any bay can serve any queue, so a quiet lane lends its space to a busy one. " +
-      "The smallest of the worthwhile measures, and it only works if drivers are " +
-      "told which bay to use.",
+      "Build two more boarding stands. This is capital works and the port only opened " +
+      "in October 2026 with a fixed layout, so treat it as a long-term option rather " +
+      "than something available now. It buys about the same as the app does, for far " +
+      "more money.",
   },
 ];
 

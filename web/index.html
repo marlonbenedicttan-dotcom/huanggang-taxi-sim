@@ -68,6 +68,28 @@
               queue for a taxi, empty taxis arrive and wait, and whoever pairs up first leaves.
             </p>
 
+            <h4>The port as it is today</h4>
+            <p>
+              The rebuilt Huanggang Port opened on <b>12 October 2026</b> and runs 24 hours. Its
+              ground-floor public transport interchange has <b>separate red (urban) and green
+              (New Territories) taxi stands</b>, plus a dedicated area and lounge for pre-booked
+              licensed fleet taxis. No other ride-hailing pickup is allowed inside the boundary
+              control area.
+            </p>
+            <p>
+              Every empty taxi — and every pre-booked fleet taxi — must first collect a
+              <b>paper queue ticket at a public transport buffer zone</b>, then wait to be called
+              forward to the stand, and hand the ticket back on the way in. The taxi trade reports
+              that this costs about <b>eight minutes a trip</b>, paid by the driver rather than the
+              passenger, and has asked the Transport Department to review it. The trade has also
+              asked for <b>real-time passenger numbers</b> so drivers can judge whether a trip to
+              the port is worth it.
+            </p>
+            <p>
+              That ticket time is the single most important thing in this model: it is the
+              difference between a taxi choosing to come here or staying in the city.
+            </p>
+
             <h4>Minute by minute</h4>
             <ol>
               <li><b>People arrive</b> at the terminal doors at the rate you set (550 an hour by
@@ -137,23 +159,33 @@
               substitute for each other rather than adding up.
             </p>
 
-            <h4>Policies we tested and dropped</h4>
+            <h4>Policies that were tested and left out</h4>
             <p>
-              Four further measures were simulated and left out of the card list, because they
-              either did nothing or were dominated by a cheaper alternative:
+              Not everything that helps in the abstract fits this port. These were simulated,
+              then dropped because they either do nothing here or would contradict the way
+              Huanggang actually operates:
             </p>
             <ul>
-              <li><b>Continuous dispatch</b> (release taxis the moment they arrive instead of in a
-                one-minute batch): <b>−0.05 min</b>, indistinguishable from zero. The shift cycle
-                is not the constraint.</li>
-              <li><b>Digital lane routing</b> (cut misrouting from 6% to 1%): <b>−0.02 min</b>.
-                Same reason.</li>
-              <li><b>Balancing New Territories supply</b>: −1.4 min, but that is an assumption
-                that more green taxis appear, not an instrument — it dodges the question the
-                incentives answer.</li>
-              <li><b>Waiting-time allowance</b>: −2.9 min and real, but the surcharge matches it
-                with a bounded cost per trip, and a per-minute payment grows the better it works.</li>
+              <li><b>Guaranteed return fare</b> — the walk-up rank is first-come-first-served by
+                ticket order; a pre-matched fare conflicts with that. Pre-booking already exists
+                in the fleet channel, which is why the app card is "fleet pre-registration".</li>
+              <li><b>Port pickup surcharge</b> — Hong Kong taxi fares are uniform by meter and
+                there is no location surcharge anywhere; this would need a fare amendment, and
+                nobody is proposing one.</li>
+              <li><b>Flexible taxis</b> — green taxis may reach the port, but they remain licensed
+                for New Territories destinations. Letting them take urban fares contradicts the
+                zoning, so the model would promise something the law forbids.</li>
+              <li><b>Pooled pickup bays</b> — the interchange has separate red and green stands by
+                licence; pooling them is not an operational choice.</li>
+              <li><b>Continuous dispatch</b> and <b>digital lane routing</b> — both measured at
+                about zero (−0.05 and −0.02 min). The dispatch cycle and misrouting are not the
+                constraint.</li>
             </ul>
+            <p class="warn">
+              Still open: the trade's request for <b>real-time passenger information</b>. The model
+              cannot answer it yet, and the answer is not obvious — telling drivers the queue is
+              long may keep them away exactly when passengers need them.
+            </p>
 
             <h4>What it does not model</h4>
             <ul>

@@ -286,6 +286,50 @@ ceasing to be supply-limited rather than from the sizes involved:
 
 Eight replications per row, seeds 11–18 (`results/incentive_sweep.txt`).
 
+### The queue-ticket regime (October 2026)
+
+The rebuilt port opened on 12 October 2026 with a **paper queue ticket**: every
+empty taxi must collect one at a public transport buffer zone before it can
+reach the rank. The taxi trade reports **~8 minutes per trip**, paid by the
+driver, and has asked the Transport Department to review it.
+
+The model carries this as `ticket_delay_min`, and it enters as driver time
+rather than passenger time:
+
+```
+supply = base_ratio x T / (T + delay)      T = average taxi time at the port (~25 min)
+```
+
+| Ticket delay | Mean wait | vs no ticket | Gave up |
+|---|---|---|---|
+| 8.0 min (paper, today) | 20.4 min | +13.2 | 18.6% |
+| 4.0 min | 15.1 | +7.9 | 8.6% |
+| 2.0 min | 10.0 | +2.8 | 4.0% |
+| 1.5 min (digital) | 8.9 | +1.8 | 3.1% |
+| 0 (no ticket) | 7.1 | — | 1.7% |
+
+Because the hall sits near capacity, a 24% cut in supply does not degrade the
+queue linearly — it tips. How strongly drivers actually respond to eight
+minutes is unknown: at half the modelled response the penalty is ~22 min
+instead of 20, so the *direction* is solid and the magnitude is an upper bound.
+
+**Note:** the results table below was produced *before* the ticket regime, so
+its baseline is the no-ticket world (7.7 min). The website now runs with the
+8-minute ticket by default.
+
+### Which policies fit this port
+
+| Policy | Fits Huanggang today? |
+|---|---|
+| Digital queue ticket | yes — the live issue, and what the trade asked for |
+| App / fleet pre-registration | yes — fleet taxis are already bookable |
+| Two extra stands | capital works; the PTI layout is fixed as built |
+| Guaranteed return fare | no — the walk-up rank is first-come-first-served |
+| Port pickup surcharge | no — HK fares are uniform by meter, no location surcharge |
+| Flexible taxis | no — green taxis stay licensed for NT destinations |
+| Pooled pickup bays | no — red and green have separate stands by licence |
+| Continuous dispatch, digital lane routing | measured at ~0 min either way |
+
 ## 5. Results (default calibration, 30 replications each)
 
 Mean ± 95% confidence interval. Replications use **common random numbers**, so
