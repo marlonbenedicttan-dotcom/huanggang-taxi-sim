@@ -1039,7 +1039,6 @@ function renderCards() {
         hideShift();
         const on = card.isOn(state.values);
         Object.assign(state.values, on ? card.off : card.on);
-        openNote = on ? null : idx;     // opening a policy explains it; closing hides it
         syncControls();
         paintCards();
         renderPilot();
@@ -1047,12 +1046,27 @@ function renderCards() {
         scheduleRun(90);
       });
 
+      // the explanation is its own control: you can read what a policy does
+      // without switching it on first
+      const help = document.createElement("button");
+      help.type = "button";
+      help.className = "card-help";
+      help.textContent = "?";
+      help.setAttribute("aria-label", `What does “${card.label}” do?`);
+      help.setAttribute("aria-expanded", "false");
+      help.setAttribute("aria-controls", `note-${idx}`);
+      help.addEventListener("click", () => {
+        openNote = openNote === idx ? null : idx;
+        paintCards();
+      });
+
       const note = document.createElement("p");
       note.className = "card-note";
+      note.id = `note-${idx}`;
       note.hidden = true;
       note.textContent = card.note || "";
 
-      row.append(btn);
+      row.append(btn, help);
       item.append(row, note);
       host.appendChild(item);
     });
@@ -1083,7 +1097,9 @@ function paintCards() {
     }
     // one target: the explanation belongs to the card you just switched on
     const note = item.querySelector(".card-note");
-    if (note) note.hidden = !(on && openNote === i);
+    if (note) note.hidden = openNote !== i;
+    const help = item.querySelector(".card-help");
+    if (help) help.setAttribute("aria-expanded", String(openNote === i));
 
     const se = card.effectSE;
     const tiny = card.effect != null && Math.abs(card.effect) < 0.25;
@@ -1386,8 +1402,9 @@ const TOUR = [
   {
     title: "Switch on a policy",
     text:
-      "Each card is one measure a port could adopt. The number on the right is its " +
-      "effect on mean wait when applied on its own — so you can see which idea matters.",
+      "Each card is one measure a port could adopt. Tap ? to read what it does without " +
+      "switching it on. The number on the right is its effect on mean wait when applied " +
+      "on its own — so you can see which idea matters.",
     target: "#policyCards",
     sheet: true,
   },

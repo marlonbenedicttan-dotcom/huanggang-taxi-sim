@@ -1080,3 +1080,26 @@ body.help-open { overflow: hidden; }
 }
 .peek-undo[hidden] { display: none; }
 .peek-undo:active { transform: scale(0.96); }
+
+/* ------------------- the "?" reads a policy, the card runs it ------------------- */
+.card-row { display: flex; align-items: stretch; gap: 6px; }
+.card-row .card { flex: 1 1 auto; min-width: 0; }
+.card-help {
+  flex: 0 0 auto;
+  width: 34px;
+  min-height: 44px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+  color: #7a7a7a;
+  font: 700 13px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  cursor: pointer;
+  transition: background var(--t-fast), color var(--t-fast), border-color var(--t-fast);
+}
+.card-help:hover { background: #fafafa; border-color: #cfcfcf; color: #000; }
+.card-help[aria-expanded="true"] { background: #000; border-color: #000; color: #fff; }
+.card-help:active { transform: scale(0.96); }
+@media (max-width: 820px) {
+  .card-help { width: 32px; min-height: 42px; }
+}
