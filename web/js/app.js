@@ -1523,6 +1523,7 @@ function init() {
     setTimeout(() => {
       const el = document.getElementById("newcomer");
       const sc = document.getElementById("panelScroll");
+      if (el) el.open = true;
       if (el && sc) el.scrollIntoView({ block: "center", behavior: "smooth" });
       el?.classList.add("flash");
       setTimeout(() => el?.classList.remove("flash"), 1200);
