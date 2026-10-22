@@ -922,7 +922,6 @@ function renderCards() {
         renderPilot();
         setPreset();
         run();
-        collapseSheet();
       });
 
       const why = document.createElement("button");
