@@ -878,7 +878,7 @@ function saveScenario() {
 
 const CARDS = [
   {
-    label: "Digital ticket (no 8-minute stop)",
+    label: "No paper ticket for drivers",
     icon: "ticket",
     cost: { capital: 2e6, years: 5, annual: 2e5, kind: "software" },
     pilot: { metric: "ticket-to-stand time, empty taxis per hour", weeks: 3 },
@@ -886,14 +886,13 @@ const CARDS = [
     off: { ticketDelayMin: 8 },
     isOn: (v) => Number(v.ticketDelayMin) < 6,
     note:
-      "Replace the physical buffer-zone ticket with a virtual queue: number-plate " +
-      "recognition or app check-in on approach, a call-forward time, and no stop on " +
-      "the way in. This is exactly what the taxi trade asked the Transport Department " +
-      "to review in October 2026 — the paper ticket costs about eight minutes a trip, " +
-      "paid by the driver rather than the passenger.",
+      "Drivers must stop at the buffer to collect a paper ticket, which costs them " +
+      "about 8 minutes on every trip. Phone check-in or number-plate recognition " +
+      "removes that stop, so more drivers are willing to come. Software only, about " +
+      "HK$2m — and what the trade asked the Transport Department to review.",
   },
   {
-    label: "Live queue info for drivers",
+    label: "Tell drivers how long the queue is",
     icon: "info",
     cost: { capital: 1.5e6, years: 5, annual: 1e5, kind: "software" },
     pilot: { metric: "taxi arrivals when the queue is short vs long", weeks: 6 },
@@ -901,13 +900,12 @@ const CARDS = [
     off: { infoShare: 0 },
     isOn: (v) => Number(v.infoShare) > 0,
     note:
-      "Publish live passenger numbers so drivers can decide before setting off — what " +
-      "the trade asked for in October 2026. Honest warning: it helps drivers and hurts " +
-      "passengers. The cars that stay away are the ones that would have arrived just " +
-      "before a queue formed.",
+      "Publish the live queue so drivers can decide before setting off. Honest " +
+      "warning: it helps drivers and slightly hurts passengers — the cars that stay " +
+      "away are the ones that would have arrived just before a queue formed.",
   },
   {
-    label: "Taxis licensed to cross both ways",
+    label: "Taxis can take someone back",
     icon: "route",
     cost: { capital: 0, years: 1, annual: 0, kind: "licensing" },
     pilot: { metric: "taxis per hour arriving loaded vs empty", weeks: 12 },
@@ -915,12 +913,11 @@ const CARDS = [
     off: { taxiSupplyRatioUrban: 1.05, taxiSupplyRatioNt: 0.95 },
     isOn: (v) => Number(v.taxiSupplyRatioUrban) > 1.3,
     note:
-      "License a quota of taxis to carry a passenger in *and* a passenger out, so the " +
-      "approach leg is paid instead of empty. Licensed cross-boundary vehicles already " +
-      "exist as a category; this extends the idea to the rank. In the model it is the " +
-      "single biggest lever after the ticket (-15.8 min at 1.5x supply) because it " +
-      "attacks the empty-approach problem structurally rather than paying drivers to " +
-      "tolerate it. Needs an agreement with the Mainland side.",
+      "A cross-border taxi drops its passenger at the port and then drives home " +
+      "empty, so nobody pays for that trip. A quota lets the same taxi pick up a " +
+      "passenger going the other way: both legs are paid, and far more drivers come. " +
+      "The biggest single win after the ticket — but Hong Kong and Shenzhen have to " +
+      "agree it.",
   },
   {
     label: "More pre-booked trips, with stands",
@@ -931,11 +928,10 @@ const CARDS = [
     off: { prebookShare: 0.1, "stands.prebook": 2 },
     isOn: (v) => Number(v.prebookShare) > 0.2,
     note:
-      "Send more passengers through the pre-booked fleet channel — the five licensed " +
-      "fleets already have dedicated stopping places at this port — and give that channel " +
-      "the stands to handle them. The capacity is the whole point: with the present two " +
-      "stands, raising the channel to 35% makes waits *worse* (+4.1 min). With six, it is " +
-      "-5.9 min.",
+      "The five licensed fleets already have their own stopping places. Send that " +
+      "channel more passengers and give it the stands to handle them. Capacity is the " +
+      "whole point: with today's two stands, more pre-booked trips make waits 4.1 " +
+      "minutes longer. With six stands it saves 5.9 minutes.",
   },
   {
     label: "Book before you arrive",
@@ -947,9 +943,9 @@ const CARDS = [
     isOn: (v) => Number(v.appShare) > 0,
     note:
       "Passengers check in before they arrive, so boarding is quicker and the hall " +
-      "knows how many are coming. Fleet taxis are already bookable and have a lounge. " +
-      "Worth about 1.3 minutes — but only once the ticket is fixed: on the paper ticket " +
-      "it measures at zero, because the hall has no taxis to board any faster.",
+      "knows how many are coming. Worth about 1.3 minutes — but only after the ticket " +
+      "is fixed. On the paper ticket it does nothing: there are no taxis to board " +
+      "any faster.",
   },
   {
     label: "Two more boarding stands",
@@ -960,9 +956,9 @@ const CARDS = [
     off: { "stands.urban": 8, "stands.nt": 3 },
     isOn: (v) => Number(v["stands.urban"]) > 8 || Number(v["stands.nt"]) > 3,
     note:
-      "Build two more boarding stands. Capital works, and the port only opened in " +
-      "October 2026 with a fixed layout, so treat it as long-term. It buys about the " +
-      "same as the app (~1.3 min) once the ticket is fixed, and nothing at all before.",
+      "Build two more boarding stands. Worth about 1.3 minutes once the ticket is " +
+      "fixed, and nothing at all before — the queue is for taxis, not space. Capital " +
+      "works, so treat it as long-term.",
   },
 ];
 

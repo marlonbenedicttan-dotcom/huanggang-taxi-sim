@@ -79,41 +79,45 @@
           </div>
           <div class="hero-num"><b id="heroWait">20.8</b><span>min average wait</span></div>
           <p id="heroSub" class="hero-sub">about 1 in 5 people give up</p>
-          <button id="heroCta" class="hero-cta">Apply the recommended fix</button>
+          <button id="heroCta" class="hero-cta">Apply both fixes</button>
 
           <details id="why">
-            <summary>Why that is the recommendation</summary>
+            <summary>Why these two, and not everything</summary>
             <div class="why-body">
               <ol class="steps">
-                <li><b>Fix the queue ticket first.</b> Phone or number-plate check-in instead of a
-                  paper ticket at the buffer. Drivers stop losing eight minutes a trip, so more of
-                  them come. Software money, about HK$2m — and the trade is already asking for it.</li>
-                <li><b>Then push for a cross-boundary quota.</b> Licensed taxis carry someone in
-                  <i>and</i> someone out, so the drive to the port is paid instead of empty. The
-                  biggest win, but it needs an agreement with Shenzhen.</li>
-                <li><b>Only grow the pre-booked lane if you build stands for it.</b> With two
-                  stands, sending more people there makes the queue longer, not shorter.</li>
+                <li><b>First, stop making drivers queue for a paper ticket.</b> Today a
+                  driver loses about <b>8 minutes</b> at the buffer before picking anyone
+                  up, and that is why many stop coming. Checking in by phone or number
+                  plate removes the stop. It is software — about HK$2m.</li>
+                <li><b>Then let a cross-border taxi take someone back.</b> A taxi drops its
+                  passenger at the port, then has to drive home <i>empty</i> — nobody pays
+                  for that trip, so drivers avoid the port. Let it pick up a passenger
+                  going the other way and both legs are paid, so far more drivers come.
+                  This is the biggest win, but Hong Kong and Shenzhen have to agree.</li>
+                <li><b>Add stands only if you also allow more pre-booked trips.</b> Two
+                  extra stands do nothing while the port is short of taxis. Space only
+                  helps once there are cars to fill it.</li>
               </ol>
               <table class="rec-table">
-                <thead><tr><th>If you…</th><th>Wait</th><th>Give up</th></tr></thead>
+                <thead><tr><th>If you…</th><th>People wait</th><th>Leave without one</th></tr></thead>
                 <tbody>
-                  <tr><td>do nothing</td><td>20 min</td><td>1 in 5</td></tr>
-                  <tr><td>fix the ticket</td><td>9 min</td><td>1 in 30</td></tr>
-                  <tr><td>ticket + quota</td><td>3 min</td><td>almost none</td></tr>
-                  <tr><td>all three</td><td>12 sec</td><td>none — but now taxis queue</td></tr>
+                  <tr><td>change nothing</td><td>20 min</td><td>1 in 5</td></tr>
+                  <tr><td>fix the ticket only</td><td>9 min</td><td>1 in 30</td></tr>
+                  <tr><td><b>ticket + return trips</b></td><td><b>3 min</b></td><td><b>almost nobody</b></td></tr>
+                  <tr><td>every policy on</td><td>12 sec</td><td>none — but now taxis wait</td></tr>
                 </tbody>
               </table>
-              <p class="rec-note">Doing everything is not the goal: at 12 seconds the taxis are
-                queueing, which costs drivers money and they stop coming.</p>
+              <p class="rec-note">More is not always better. At 12 seconds it is the
+                <i>taxis</i> that are queueing, so drivers earn less and they stop coming.</p>
             </div>
           </details>
         </section>
 
         <div id="policyCards" class="cards"></div>
         <p class="cards-note">
-          Effects show what switching a policy on or off does <b>with your other settings
-          as they are</b> — so they change as you go. Some policies do nothing until the
-          ticket is fixed: switch it on and watch them move.
+          Each number is what turning this policy on or off would do <b>with your other
+          settings as they are</b>, so it changes as you go. Some policies do nothing until
+          the ticket is fixed.
         </p>
         <div id="controls" class="controls"></div>
 
@@ -141,7 +145,7 @@
               measure and roughly how long it takes to see the effect against normal variation.
             </p>
             <table>
-              <thead><tr><th>Policy</th><th>Measure</th><th>Trial</th></tr></thead>
+              <thead><tr><th>Policy</th><th>What to measure</th><th>How long</th></tr></thead>
               <tbody id="pilotRows"><tr><td colspan="3" class="muted">switch on a policy…</td></tr></tbody>
             </table>
             <p class="how-foot">
@@ -155,13 +159,13 @@
           <summary>What each policy costs per minute saved</summary>
           <div class="value">
             <p class="lede">
-              Effect is the change in mean wait when the policy is applied alone at the settings
-              you have now. Cost is a rough daily figure; the last column divides one by the other,
-              in Hong Kong dollars per passenger-minute of waiting removed.
+              <b>Change in wait</b> is what this policy alone would do at the settings you have
+              now. <b>Cost per day</b> is a rough figure. The last column divides one by the
+              other: the dollars it takes to remove one minute of waiting for one passenger.
             </p>
             <table>
               <thead>
-                <tr><th>Policy</th><th>Effect</th><th>Cost / day</th><th>HK$ per passenger-min</th></tr>
+                <tr><th>Policy</th><th>Change in wait</th><th>Cost per day</th><th>$ per minute saved</th></tr>
               </thead>
               <tbody id="valueRows"><tr><td colspan="4" class="muted">computing…</td></tr></tbody>
             </table>
