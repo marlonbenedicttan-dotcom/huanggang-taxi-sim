@@ -93,20 +93,19 @@ function make(rows, map) {
  * Three frames: step-left, stand, step-right.
  * ------------------------------------------------------------------ */
 const PERSON_TOP = [
-  ".hhh..",
-  "hhhhhh",
-  ".ffff.",
-  "f.ff.f",
-  ".cccc.",
-  "cccccc",
-  "c.cc.c",
-  ".cccc.",
+  ".hh..",
+  "hhhh.",
+  ".fff.",
+  ".ccc.",
+  "ccccc",
+  "c.c.c",
 ];
 
+/** Three leg poses; the walk cycle alternates A and C with B as the rest pose. */
 const PERSON_LEGS = [
-  ["..kk..", ".ss.ss"],
-  [".kkk..", ".ss.s."],
-  [".kk.kk", "ss...s"],
+  ["..kk.", ".ss.s"],
+  [".kk..", ".s.s."],
+  [".kk.k", "ss..s"],
 ];
 
 function personFrames(shirt) {
@@ -222,7 +221,7 @@ const SIGNPOST = [
 ];
 
 /** Neutral clothing, so a 100-person queue looks like people, not a colour block. */
-const CROWD = ["#7d8b9c", "#8a6f52", "#5b6b8a", "#a8a08a", "#6d7a63", "#9c5b4a", "#c2b8a4"];
+const CROWD = ["#77808c", "#8a7159", "#5f6b7a", "#9a917f", "#6f7a6b"];
 
 export const SPR = {
   crowd: CROWD.map((c) => personFrames(c)),

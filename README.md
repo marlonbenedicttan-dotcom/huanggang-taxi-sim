@@ -106,6 +106,10 @@ no cold start**. The renderer draws into a 640x360 buffer and scales with
 nearest-neighbour, so the pixel size is constant at any window size; portrait
 screens get their own framing rather than a letterboxed strip.
 
+The view is not locked: **drag to look around, scroll or pinch to zoom
+(1x–4x), double-click to reset**. Pan and zoom move a window over the finished
+frame, so the art keeps its authored pixel size instead of resampling.
+
 ![Current process at the evening peak](docs/evening_current_process.png)
 
 *Left panel: every parameter from section 3. Right: the hall at 17:30 — 51 urban

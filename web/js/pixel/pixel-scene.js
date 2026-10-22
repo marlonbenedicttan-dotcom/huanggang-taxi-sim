@@ -97,6 +97,11 @@ export class PixelScene {
     this.metaFrame = null;
     this.meta = null;
 
+    // viewport camera over the finished buffer: pan and zoom are pure blits,
+    // so the world keeps its authored pixel size at every zoom level
+    this.cam = { x: W / 2, y: H / 2, zoom: 1 };
+    this._bindCamera();
+
     this.resize();
   }
 
@@ -109,7 +114,7 @@ export class PixelScene {
     this.canvas.width = cw;
     this.canvas.height = ch;
     this.dpr = dpr;
-    this.portrait = rect.height > rect.width * 1.6;
+    this.portrait = rect.height > rect.width * 1.2;
 
     // a tall screen gets its own framing: a narrower slice of the hall and a
     // more top-down ground, so the scene fills the panel instead of sitting in
@@ -124,6 +129,119 @@ export class PixelScene {
       ? Math.round(48 * dpr)
       : Math.round((ch - H * this.scale) / 2);
     this.ctx.imageSmoothingEnabled = false;
+  }
+
+  /* ---------------- camera ---------------- */
+  _bindCamera() {
+    const c = this.canvas;
+    const pts = new Map();
+    let drag = null;
+    let pinch = null;
+
+    const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+    this._clamp = clamp;
+
+    const toBuffer = (clientX, clientY) => {
+      const rect = c.getBoundingClientRect();
+      const px = (clientX - rect.left) * (c.width / rect.width);
+      const py = (clientY - rect.top) * (c.height / rect.height);
+      const r = this._viewRect();
+      const k = this.scale * this.cam.zoom;
+      return { x: r.x + (px - this.offX) / k, y: r.y + (py - this.offY) / k };
+    };
+
+    c.style.cursor = "grab";
+    c.style.touchAction = "none";
+
+    c.addEventListener("wheel", (e) => {
+      e.preventDefault();
+      const before = toBuffer(e.clientX, e.clientY);
+      this.cam.zoom = clamp(this.cam.zoom * Math.exp(-e.deltaY * 0.0016), 1, 4);
+      const after = toBuffer(e.clientX, e.clientY);
+      this.cam.x += before.x - after.x;
+      this.cam.y += before.y - after.y;
+      this._clampCam();
+    }, { passive: false });
+
+    c.addEventListener("pointerdown", (e) => {
+      c.setPointerCapture?.(e.pointerId);
+      pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (pts.size === 1) {
+        drag = { x: e.clientX, y: e.clientY };
+        c.style.cursor = "grabbing";
+      } else if (pts.size === 2) {
+        const [a, b] = [...pts.values()];
+        pinch = { d: Math.hypot(a.x - b.x, a.y - b.y), zoom: this.cam.zoom };
+        drag = null;
+      }
+    });
+
+    c.addEventListener("pointermove", (e) => {
+      if (!pts.has(e.pointerId)) return;
+      pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+      if (pts.size >= 2 && pinch) {
+        const [a, b] = [...pts.values()];
+        const d = Math.hypot(a.x - b.x, a.y - b.y);
+        if (pinch.d > 10) {
+          const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+          const before = toBuffer(mid.x, mid.y);
+          this.cam.zoom = clamp(pinch.zoom * (d / pinch.d), 1, 4);
+          const after = toBuffer(mid.x, mid.y);
+          this.cam.x += before.x - after.x;
+          this.cam.y += before.y - after.y;
+          this._clampCam();
+        }
+        return;
+      }
+
+      if (!drag) return;
+      const rect = c.getBoundingClientRect();
+      const k = this.scale * this.cam.zoom * (c.width / rect.width);
+      this.cam.x -= (e.clientX - drag.x) / k;
+      this.cam.y -= (e.clientY - drag.y) / k;
+      drag = { x: e.clientX, y: e.clientY };
+      this._clampCam();
+    });
+
+    const end = (e) => {
+      pts.delete(e.pointerId);
+      if (pts.size < 2) pinch = null;
+      if (pts.size === 0) {
+        drag = null;
+        c.style.cursor = "grab";
+      }
+    };
+    c.addEventListener("pointerup", end);
+    c.addEventListener("pointercancel", end);
+
+    c.addEventListener("dblclick", () => this.resetView());
+  }
+
+  /** Visible window into the buffer, centred on the camera. */
+  _viewRect() {
+    const z = this.cam.zoom;
+    const w = W / z;
+    const h = H / z;
+    return {
+      x: this._clamp(this.cam.x - w / 2, 0, W - w),
+      y: this._clamp(this.cam.y - h / 2, 0, H - h),
+      w, h,
+    };
+  }
+
+  _clampCam() {
+    const z = this.cam.zoom;
+    const wx = W / (2 * z);
+    const hy = H / (2 * z);
+    this.cam.x = this._clamp(this.cam.x, wx, W - wx);
+    this.cam.y = this._clamp(this.cam.y, hy, H - hy);
+  }
+
+  resetView() {
+    this.cam.zoom = 1;
+    this.cam.x = W / 2;
+    this.cam.y = H / 2;
   }
 
   _applyView() {
@@ -174,13 +292,16 @@ export class PixelScene {
   /** CSS pixels for a world point — used by the HTML zone counters. */
   project(x, y, z) {
     const s = this.scale / (this.dpr || 1);
+    const r = this._viewRect();
+    const bx = (X(x) - r.x) * this.cam.zoom;
+    const by = (Z(z) - (y || 0) * 13 - r.y) * this.cam.zoom;
     // the floating counters live in the stage, not the canvas, so add the
     // canvas's own offset — in the split view that is half the stage
     const cr = this.canvas.getBoundingClientRect();
     const host = this.canvas.parentElement?.getBoundingClientRect() || { left: 0, top: 0 };
     return {
-      x: cr.left - host.left + this.offX / (this.dpr || 1) + X(x) * s,
-      y: cr.top - host.top + this.offY / (this.dpr || 1) + (Z(z) - (y || 0) * 13) * s,
+      x: cr.left - host.left + this.offX / (this.dpr || 1) + bx * s,
+      y: cr.top - host.top + this.offY / (this.dpr || 1) + by * s,
       z: 0,
     };
   }
@@ -236,10 +357,13 @@ export class PixelScene {
       const layer = Math.floor(slot / 48);
       const k = slot % 48;
       const col = k % 12, row = Math.floor(k / 12);
-      const qx = 13.4 + col * 0.8 + layer * 0.16;
+      // brick pattern: every other row is offset half a slot, so the queue
+      // reads as a loose crowd instead of a grid of identical figures
+      const stagger = row % 2 ? 0.4 : 0;
+      const qx = 13.4 + col * 0.8 + stagger + layer * 0.16;
       const qz = LANES[CLS[clsId]] + [-2.05, -0.68, 0.68, 2.05][row] + layer * 0.10;
-      const jx = (((id * 37) % 17) / 17 - 0.5) * 0.22;
-      const jz = (((id * 53) % 19) / 19 - 0.5) * 0.20;
+      const jx = (((id * 37) % 17) / 17 - 0.5) * 0.26;
+      const jz = (((id * 53) % 19) / 19 - 0.5) * 0.30;
       let e = this.people.get(id);
       if (!e) {
         const [dx, dz] = doorPos(clsId);
@@ -283,7 +407,7 @@ export class PixelScene {
     const k = slot % 48;
     const col = k % 12, row = Math.floor(k / 12);
     return [
-      13.4 + col * 0.8 + layer * 0.16,
+      13.4 + col * 0.8 + (row % 2 ? 0.4 : 0) + layer * 0.16,
       LANES[CLS[clsId]] + [-2.05, -0.68, 0.68, 2.05][row] + layer * 0.10,
     ];
   }
@@ -346,7 +470,15 @@ export class PixelScene {
       } else {
         e.moving = false;
       }
-      if (e.leaving && d < 0.25) this.people.delete(id);
+      if (e.boarded) {
+        e.fade = (e.fade ?? 1) - step * 2.2;
+        if (e.fade <= 0) this.people.delete(id);
+        continue;
+      }
+      if (e.leaving && d < 0.25) {
+        e.boarded = true;
+        e.moving = false;
+      }
     }
 
     this._updateLabels();
@@ -404,7 +536,8 @@ export class PixelScene {
     c.fillStyle = grad;
     c.fillRect(0, 0, this.canvas.width, this.canvas.height);
     c.imageSmoothingEnabled = false;
-    c.drawImage(this.buf, 0, 0, W, H,
+    const r = this._viewRect();
+    c.drawImage(this.buf, r.x, r.y, r.w, r.h,
       this.offX, this.offY, Math.round(W * this.scale), Math.round(H * this.scale));
   }
 
@@ -773,9 +906,9 @@ export class PixelScene {
     }
   }
 
-  _shadow(x, y, w) {
+  _shadow(x, y, w, alpha = 0.20) {
     const g = this.g;
-    g.fillStyle = "rgba(32,26,20,0.20)";
+    g.fillStyle = `rgba(32,26,20,${alpha})`;
     g.beginPath();
     g.ellipse(Math.round(x), Math.round(y), w, Math.max(1, Math.round(w * 0.42)), 0, 0, Math.PI * 2);
     g.fill();
@@ -815,7 +948,7 @@ export class PixelScene {
     const x = X(e.x);
     const y = Z(e.z);
     // one in four wears the lane colour; the rest are just people
-    const wearLane = (e.seed % 4) === 0;
+    const wearLane = (e.seed % 7) === 0;
     const frames = wearLane
       ? (SPR.person[CLS[e.cls]] || SPR.person.urban)
       : SPR.crowd[e.seed % SPR.crowd.length];
@@ -823,16 +956,18 @@ export class PixelScene {
     const f = moving ? 1 + (Math.floor(this.time * 7 + (e.seed || 0)) % 2) : 0;
     const spr = frames[Math.min(f, frames.length - 1)];
 
-    this._shadow(x, y + 1, 4);
+    this._shadow(x, y + 1, 3, 0.13);
     g.save();
+    if (e.fade != null) g.globalAlpha = Math.max(0, e.fade);
     if (e.face < 0) {
       g.translate(Math.round(x), Math.round(y));
       g.scale(-1, 1);
-      g.drawImage(spr, -3, -spr.height);
+      g.drawImage(spr, -2, -spr.height);
     } else {
-      g.drawImage(spr, Math.round(x - 3), Math.round(y - spr.height));
+      g.drawImage(spr, Math.round(x - 2), Math.round(y - spr.height));
     }
     g.restore();
+    g.globalAlpha = 1;
   }
 
   _prop(p) {
