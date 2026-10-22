@@ -116,8 +116,8 @@ function collapseSheet() {
   document.body.classList.remove("sheet-open");
   const t = document.getElementById("sheetToggle");
   if (t) t.setAttribute("aria-expanded", "false");
-  const panel = document.getElementById("panel");
-  if (panel) panel.scrollTop = 0;
+  const sc = document.getElementById("panelScroll");
+  if (sc) sc.scrollTop = 0;
 }
 
 const IS_PHONE =
@@ -1342,7 +1342,10 @@ function init() {
     document.body.classList.toggle("sheet-open", open);
     sheet?.setAttribute("aria-expanded", String(open));
     // otherwise the collapsed sheet re-opens showing wherever you left it
-    if (!open) document.getElementById("panel").scrollTop = 0;
+    if (!open) {
+      const sc = document.getElementById("panelScroll");
+      if (sc) sc.scrollTop = 0;
+    }
   };
   sheet?.addEventListener("click", () =>
     setSheet(!document.body.classList.contains("sheet-open"))

@@ -593,3 +593,39 @@ footer { color: #9b9b9b; border-top: 1px solid var(--line); padding-top: 10px; }
     height: 38px;
   }
 }
+
+/* ------------------------------------------------------------------
+   The sheet handle must never scroll with the panel. Sticky positioning
+   is unreliable on iOS when the scroller is also a flex column, so the
+   handle is a fixed sibling and the content scrolls underneath it.
+   ------------------------------------------------------------------ */
+#panelScroll { display: contents; }
+
+@media (max-width: 820px) {
+  #panel {
+    overflow: hidden;
+    padding: 0 14px calc(10px + env(safe-area-inset-bottom));
+  }
+  #panelScroll {
+    display: block;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+    scrollbar-width: none;
+    padding-bottom: 4px;
+  }
+  #panelScroll::-webkit-scrollbar { display: none; }
+  .sheet-handle {
+    position: static;
+    flex: 0 0 auto;
+    margin: 0 -14px;
+    padding: 6px 14px;
+    height: 38px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--line);
+    z-index: 1;
+  }
+  body:not(.sheet-open) .sheet-handle { border-bottom: 0; }
+}
