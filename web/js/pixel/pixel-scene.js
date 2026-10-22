@@ -30,6 +30,11 @@ let OY = 118;   // screen y of z = 0
 const LANDSCAPE = { W: 640, H: 360, U: 12.6, V: 6.9, OX: 16, OY: 118 };
 const PORTRAIT = { W: 420, H: 520, U: 12.0, V: 10.5, OX: -86, OY: 150 };
 
+// The apron, lanes and terminal are drawn wider than the visible world so the
+// frame never shows the edge of the building against bare grass.
+const X0 = -6;
+const X1 = 54;
+
 const X = (x) => OX + x * U;
 const Z = (z) => OY + z * V;
 
@@ -159,16 +164,31 @@ export class PixelScene {
       const k = this.scale * this.cam.zoom;
       return { x: r.x + (px - this.offX) / k, y: r.y + (py - this.offY) / k };
     };
-    this._zoomAt = (clientX, clientY, factor) => {
+    this._zoomAt = (clientX, clientY, factor, animate = false) => {
       const rect = c.getBoundingClientRect();
       const px = (clientX - rect.left) * (c.width / rect.width);
       const py = (clientY - rect.top) * (c.height / rect.height);
       const before = this._screenToBuffer(px, py);
-      this.cam.zoom = clamp(this.cam.zoom * factor, 1, 4);
+      const z0 = this.cam.zoom;
+      const z1 = clamp(z0 * factor, 1, 4);
+      if (Math.abs(z1 - z0) < 0.001) return;
+
+      // move the camera so the point under the cursor stays put
+      this.cam.zoom = z1;
       const after = this._screenToBuffer(px, py);
-      this.cam.x += before.x - after.x;
-      this.cam.y += before.y - after.y;
-      this._clampCam();
+      const to = { x: this.cam.x + (before.x - after.x), y: this.cam.y + (before.y - after.y) };
+
+      if (animate) {
+        this.cam.zoom = z0;
+        this._anim = {
+          t: 0, dur: 0.26, z0, z1,
+          c0: { x: this.cam.x, y: this.cam.y }, c1: to,
+        };
+      } else {
+        this.cam.x = to.x;
+        this.cam.y = to.y;
+        this._clampCam();
+      }
     };
 
     c.addEventListener("wheel", (e) => {
@@ -180,6 +200,9 @@ export class PixelScene {
       c.setPointerCapture?.(e.pointerId);
       pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
       if (pts.size === 1) {
+        this._dragging = true;
+        this.vel = null;
+        this._lastMove = 0;
         drag = { x: e.clientX, y: e.clientY };
         // at the fit view there is nowhere to pan: a drag dives in instead
         this._dive = this.cam.zoom <= 1.02 ? { x: e.clientX, y: e.clientY } : null;
@@ -215,18 +238,38 @@ export class PixelScene {
       if (this._dive) {
         const far = Math.hypot(e.clientX - this._dive.x, e.clientY - this._dive.y);
         if (far < 7) return;                    // a click, not a drag
-        this._zoomAt(e.clientX, e.clientY, 2.1);
+        this._zoomAt(e.clientX, e.clientY, 1.9, true);
         this._dive = null;
         drag = { x: e.clientX, y: e.clientY };
         return;
       }
 
+      // the hand wins over any easing: finish the dive rather than freeze
+      // halfway through it
+      if (this._anim) {
+        this.cam.zoom = this._anim.z1;
+        this._anim = null;
+      }
+
       const rect = c.getBoundingClientRect();
       const k = this.scale * this.cam.zoom * (c.width / rect.width);
-      this.cam.x -= (e.clientX - drag.x) / k;
-      this.cam.y -= (e.clientY - drag.y) / k;
+      const dx = (e.clientX - drag.x) / k;
+      const dy = (e.clientY - drag.y) / k;
+      this.cam.x -= dx;
+      this.cam.y -= dy;
       drag = { x: e.clientX, y: e.clientY };
       this._clampCam();
+
+      // remember the throw so the pan keeps drifting after release
+      const now = performance.now();
+      const span = Math.max(8, now - (this._lastMove || now));
+      this._lastMove = now;
+      const vx = -dx / (span / 1000);
+      const vy = -dy / (span / 1000);
+      const speed = Math.hypot(vx, vy);
+      const cap = 520;                   // buffer px per second
+      const f = speed > cap ? cap / speed : 1;
+      this.vel = { x: vx * f, y: vy * f };
     });
 
     const end = (e) => {
@@ -235,6 +278,8 @@ export class PixelScene {
       if (pts.size === 0) {
         drag = null;
         this._dive = null;
+        this._dragging = false;
+        this._lastMove = 0;
         c.style.cursor = "grab";
       }
     };
@@ -270,7 +315,7 @@ export class PixelScene {
   /** Zoom about the middle of the canvas (what the +/− buttons call). */
   zoomBy(factor) {
     const r = this.canvas.getBoundingClientRect();
-    this._zoomAt?.(r.left + r.width / 2, r.top + r.height / 2, factor);
+    this._zoomAt?.(r.left + r.width / 2, r.top + r.height / 2, factor, true);
   }
 
   resetView() {
@@ -576,7 +621,41 @@ export class PixelScene {
   /* ================================================================== *
    * drawing
    * ================================================================== */
-  render() {
+  /** Momentum and eased zoom, so a throw glides and a dive is not a jump cut. */
+  _stepCamera(dt) {
+    const d = Math.min(dt || 0.016, 0.05);
+    const ez = (k) => 1 - Math.pow(1 - k, 3);
+
+    if (this._anim) {
+      const a = this._anim;
+      a.t += d;
+      const k = Math.min(1, a.t / a.dur);
+      const e = ez(k);
+      this.cam.zoom = a.z0 + (a.z1 - a.z0) * e;
+      this.cam.x = a.c0.x + (a.c1.x - a.c0.x) * e;
+      this.cam.y = a.c0.y + (a.c1.y - a.c0.y) * e;
+      this._clampCam();
+      if (k >= 1) this._anim = null;
+      return;
+    }
+
+    if (!this._dragging && this.vel) {
+      const v = this.vel;
+      if (Math.hypot(v.x, v.y) < 6) {
+        this.vel = null;
+        return;
+      }
+      this.cam.x += v.x * d;
+      this.cam.y += v.y * d;
+      const damp = Math.pow(0.0009, d);
+      v.x *= damp;
+      v.y *= damp;
+      this._clampCam();
+    }
+  }
+
+  render(dt) {
+    this._stepCamera(dt);
     this._applyView();          // compare view: panels have different sizes
     if (this.canvas.id === "scene") {
       const ctl = document.getElementById("camCtl");
@@ -637,7 +716,7 @@ export class PixelScene {
 
   _drawGround() {
     const g = this.g;
-    const x0 = X(-2), x1 = X(49);
+    const x0 = X(X0), x1 = X(X1);
     const y0 = Z(-3.4), y1 = Z(24.6);
 
     // apron
@@ -666,24 +745,24 @@ export class PixelScene {
 
       // asphalt
       g.fillStyle = PAL.road;
-      g.fillRect(X(-2), top, X(49) - X(-2), h);
+      g.fillRect(X(X0), top, X(X1) - X(X0), h);
 
       // far edge falls into shade, near edge catches the light
       g.fillStyle = "rgba(30,34,40,0.16)";
-      g.fillRect(X(-2), top, X(49) - X(-2), 3);
+      g.fillRect(X(X0), top, X(X1) - X(X0), 3);
 
       // wear: two darker tyre tracks
       g.fillStyle = PAL.roadDark;
-      g.fillRect(X(-2), top + 6, X(49) - X(-2), 3);
-      g.fillRect(X(-2), bot - 9, X(49) - X(-2), 3);
+      g.fillRect(X(X0), top + 6, X(X1) - X(X0), 3);
+      g.fillRect(X(X0), bot - 9, X(X1) - X(X0), 3);
 
       // coloured kerb on the terminal side
       g.fillStyle = LIVERY[CLS[id]];
-      g.fillRect(X(-2), top - 2, X(49) - X(-2), 2);
+      g.fillRect(X(X0), top - 2, X(X1) - X(X0), 2);
       g.fillStyle = "#cbc2b0";
-      g.fillRect(X(-2), bot, X(49) - X(-2), 2);
+      g.fillRect(X(X0), bot, X(X1) - X(X0), 2);
       g.fillStyle = "#efe8d8";
-      g.fillRect(X(-2), bot + 2, X(49) - X(-2), 1);
+      g.fillRect(X(X0), bot + 2, X(X1) - X(X0), 1);
 
       // lane name painted on the asphalt
       drawText(g, ["URBAN", "NEW TERRITORIES", "PRE-BOOKED"][id],
@@ -806,8 +885,8 @@ export class PixelScene {
       const h = Math.round(spr.height * scale);
       g.drawImage(spr, Math.round(X(x) - w / 2), Math.round(horizon - h + 2), w, h);
     }
-    const left = X(TERMINAL.x0);
-    const right = X(TERMINAL.x1);
+    const left = X(X0);
+    const right = X(X1);
     const base = Z(TERMINAL.y + TERMINAL.depth / 2);   // front wall meets the pavement
     const wallH = 66;
     const top = base - wallH;
@@ -903,14 +982,14 @@ export class PixelScene {
     g.fillStyle = PAL.roofLight;
     g.fillRect(left - 3, top - 6, right - left + 6, 1);
 
-    // canopy over the doors, with a shadow on the wall
+    // a shallow stone awning over the entrance, no colour slab
     const cLeft = X(12.5), cRight = X(23.5);
-    g.fillStyle = "rgba(30,26,20,0.18)";
-    g.fillRect(cLeft, base - 4, cRight - cLeft, 4);
-    g.fillStyle = "#2f7f6b";
-    g.fillRect(cLeft, base - 9, cRight - cLeft, 5);
-    g.fillStyle = "#3d9d84";
-    g.fillRect(cLeft, base - 9, cRight - cLeft, 1);
+    g.fillStyle = "rgba(30,26,20,0.16)";
+    g.fillRect(cLeft, base - 3, cRight - cLeft, 3);
+    g.fillStyle = "#d9c6a4";
+    g.fillRect(cLeft, base - 6, cRight - cLeft, 3);
+    g.fillStyle = "#efe0c6";
+    g.fillRect(cLeft, base - 6, cRight - cLeft, 1);
 
     // floor band and pilasters between the window rows and the shopfronts
     const bandY = Math.round(top + 29);
@@ -953,8 +1032,6 @@ export class PixelScene {
       { kind: "sign", x: 11.5, z: 10.4 },
       { kind: "sign", x: 11.5, z: 18.4 },
       // planting at the edges
-      { kind: "tree", x: -2.6, z: 8 }, { kind: "tree", x: -2.6, z: 17 },
-      { kind: "tree", x: 49.2, z: 6 }, { kind: "tree", x: 49.2, z: 15 },
       // island planting between the lanes
       { kind: "planter", x: 6, z: 8 }, { kind: "planter", x: 18, z: 8 },
       { kind: "planter", x: 30, z: 8 }, { kind: "planter", x: 42, z: 8 },
