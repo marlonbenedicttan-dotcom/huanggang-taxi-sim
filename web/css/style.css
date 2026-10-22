@@ -445,19 +445,44 @@ main {
   body.sheet-open .runbar,
   body.sheet-open .hint,
   body.sheet-open footer,
-  body.sheet-open #howItWorks { flex: 0 0 auto; }
+  body.sheet-open #howItWorks,
+  body.sheet-open #valuePanel,
+  body.sheet-open #pilotPanel { flex: 0 0 auto; }
+
+  /* the sticky run bar chased the scroll on phones; keep it in the flow */
+  #panel .runbar { position: static; background: none; padding: 0; }
 
   .sheet-handle {
     display: flex;
     align-items: center;
     justify-content: center;
+    gap: 8px;
     width: 100%;
     height: 26px;
     background: transparent;
     border: 0;
     padding: 0;
     flex: 0 0 auto;
+    /* stays at the top of the scroll container, so closing the sheet never
+       requires scrolling back up */
+    position: sticky;
+    top: 0;
+    z-index: 6;
   }
+  body.sheet-open .sheet-handle {
+    background: var(--panel);
+    margin: 0 -14px 4px;
+    padding: 6px 14px;
+    height: 34px;
+  }
+  .sheet-close {
+    display: none;
+    font: 600 10px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #8a7d6b;
+  }
+  body.sheet-open .sheet-close { display: inline; }
   .sheet-handle span {
     width: 42px;
     height: 5px;
@@ -501,9 +526,13 @@ main {
     align-items: flex-start;
     gap: 5px;
   }
-  #counts { flex-wrap: nowrap; overflow: hidden; max-width: calc(100vw - 130px); }
-  #clock { font-size: 17px; }
-  .chip { font-size: 10px; padding: 2px 6px; }
+  /* one compact row: time, then counts as dot + number only */
+  #hud { flex-direction: row; align-items: center; gap: 8px; }
+  #counts { flex-wrap: nowrap; overflow: hidden; max-width: none; gap: 4px; }
+  #clock { font-size: 15px; }
+  .chip { font-size: 10.5px; padding: 2px 6px; gap: 4px; }
+  .chip b { font-weight: 700; }
+  .chip .chip-label { display: none; }
   .chip i { width: 6px; height: 6px; }
 
   .overlay-top { top: calc(10px + env(safe-area-inset-top)); right: 12px; }
@@ -1225,12 +1254,19 @@ html { scroll-behavior: smooth; }
   /* the playback bar used to sit on the same line as the counters and, with
      the bigger touch targets, covered them. Give it its own row. */
   .overlay-top {
-    top: calc(68px + env(safe-area-inset-top));
+    top: calc(46px + env(safe-area-inset-top));
     left: 10px;
     right: 10px;
     display: flex;
     justify-content: flex-end;
   }
+  .playback { max-width: 100%; }
+  .playback select {
+    min-width: 0;
+    max-width: 54vw;
+    text-overflow: ellipsis;
+  }
+  .playback button { flex: 0 0 auto; }
   #hud { top: calc(10px + env(safe-area-inset-top)); left: 12px; gap: 8px; }
 
   /* camera controls become a vertical strip on the right edge, out of the way */
@@ -1426,3 +1462,27 @@ html { scroll-behavior: smooth; }
 .overlay-top .playback { background: rgba(16, 24, 37, 0.9); }
 #camCtl { background: rgba(20, 28, 36, 0.86); }
 #camHint { background: rgba(20, 28, 36, 0.8); }
+
+/* recommended package */
+.presets .preset-rec {
+  grid-column: 1 / -1;
+  background: linear-gradient(180deg, #fff3e0, #ffe8cc);
+  color: #8a3d0a;
+  border: 1px solid #e8b878;
+  font-weight: 700;
+}
+.presets .preset-rec:hover { background: #ffe3c2; }
+.rec-cta {
+  width: 100%;
+  margin-top: 9px;
+  padding: 9px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: linear-gradient(180deg, #ff9a4d, #f07420);
+  color: #fff;
+  font: 700 11.5px/1.3 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(240, 116, 32, 0.28);
+}
+.rec-cta:hover { filter: brightness(1.05); }
+.rec-cta:active { transform: translateY(1px); }

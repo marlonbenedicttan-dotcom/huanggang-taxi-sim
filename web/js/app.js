@@ -134,6 +134,17 @@ const PRESETS = {
     backhaulMatch: 0, portSurchargeHkd: 0, waitAllowanceHkd: 0,
     ticketDelayMin: 8, infoShare: 0, nightMinTaxis: 0,
   },
+  // ticket + cross-boundary quota: 20.3 -> 3.2 min, and the only two levers
+  // that pay for themselves. Verified with 30 replications; see README.
+  recommended: {
+    paxPerHour: 550, urbanShare: 0.75, prebookShare: 0.1,
+    taxiSupplyRatioUrban: 1.575, taxiSupplyRatioNt: 1.425, flexShare: 0,
+    "stands.urban": 8, "stands.nt": 3, "stands.prebook": 2, service: 1.5, bufferCapacity: 40,
+    dispatchIntervalMin: 1, dispatchBatch: 8, misrouteProb: 0.06,
+    appShare: 0, pooledStands: false, patienceMeanMin: 35,
+    backhaulMatch: 0, portSurchargeHkd: 0, waitAllowanceHkd: 0,
+    ticketDelayMin: 1.5, infoShare: 0, nightMinTaxis: 0,
+  },
   smart: {
     paxPerHour: 550, urbanShare: 0.75, prebookShare: 0.1,
     taxiSupplyRatioUrban: 1.05, taxiSupplyRatioNt: 1.05, flexShare: 0.35,
@@ -745,10 +756,12 @@ function updateHud(frame) {
     [2, frame.q[2]],
   ]
     .filter(([, n]) => n > 0)
-    .map(([c, n]) => `<span class="chip"><i style="background:${CSS_COLOR[c]}"></i>${n} ${CLS_SHORT[c]}</span>`)
+    .map(([c, n]) => `<span class="chip"><i style="background:${CSS_COLOR[c]}"></i>` +
+      `<b>${n}</b><span class="chip-label">${CLS_SHORT[c]}</span></span>`)
     .join("");
-  const bufLabel = IS_PHONE ? `${frame.buf} taxis` : `${frame.buf} taxis in buffer`;
-  $("#counts").innerHTML = chips + `<span class="chip"><i class="buf"></i>${bufLabel}</span>`;
+  $("#counts").innerHTML = chips +
+    `<span class="chip"><i class="buf"></i><b>${frame.buf}</b>` +
+    `<span class="chip-label">taxis in buffer</span></span>`;
 }
 
 /* ------------------------------------------------------------------ *
@@ -866,76 +879,97 @@ function baselineValues() {
 function renderCards() {
   const host = $("#policyCards");
   if (!host) return;
-  host.innerHTML = "";
 
-  for (const card of CARDS) {
+  // Build once, then only update the parts that change. Rebuilding the whole
+  // list on every effect update made the cards (and anything below them) jump
+  // around while the background calculation was running.
+  if (host.children.length !== CARDS.length) {
+    host.innerHTML = "";
+    CARDS.forEach((card) => {
+      const item = document.createElement("div");
+      item.className = "card-item";
+
+      const row = document.createElement("div");
+      row.className = "card-row";
+
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "card";
+      btn.innerHTML =
+        `<span class="dot"></span><span class="t">${card.label}</span>` +
+        `<span class="eff">…</span>`;
+      btn.addEventListener("click", () => {
+        const on = card.isOn(state.values);
+        Object.assign(state.values, on ? card.off : card.on);
+        syncControls();
+        paintCards();
+        renderPilot();
+        setPreset();
+        run();
+      });
+
+      const why = document.createElement("button");
+      why.type = "button";
+      why.className = "card-q";
+      why.textContent = "?";
+      why.setAttribute("aria-expanded", "false");
+      why.setAttribute("aria-label", `What does "${card.label}" do?`);
+      why.title = "What does this do?";
+
+      const note = document.createElement("p");
+      note.className = "card-note";
+      note.hidden = true;
+      note.textContent = card.note || "";
+
+      why.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const open = note.hidden;
+        note.hidden = !open;
+        why.setAttribute("aria-expanded", String(open));
+        why.classList.toggle("open", open);
+      });
+
+      row.append(btn, why);
+      item.append(row, note);
+      host.appendChild(item);
+    });
+  }
+
+  paintCards();
+}
+
+/** Update the toggle state and effect labels without touching the DOM shape. */
+function paintCards() {
+  const host = $("#policyCards");
+  if (!host) return;
+  CARDS.forEach((card, i) => {
+    const item = host.children[i];
+    if (!item) return;
+    const btn = item.querySelector(".card");
+    const effEl = item.querySelector(".eff");
     const on = card.isOn(state.values);
+
+    btn.classList.toggle("on", on);
+    btn.setAttribute("aria-pressed", String(on));
+
     const se = card.effectSE;
-    // show the estimate; only call it zero when it is practically zero.
-    // (A 2-sigma rule hid real 1-minute effects as "noise".)
     const tiny = card.effect != null && Math.abs(card.effect) < 0.25;
     const unsure = card.effect != null && se != null && Math.abs(card.effect) < 2 * se;
-    const eff = card.effect == null || !Number.isFinite(card.effect)
+    const text = card.effect == null || !Number.isFinite(card.effect)
       ? "…"
       : tiny
         ? "≈ 0"
         : `${card.effect >= 0 ? "+" : ""}${card.effect.toFixed(1)} min`;
-    const zero = tiny;
-    const bad = card.effect != null && !tiny && card.effect >= 0.08;
-    const tip = card.effect == null
-      ? "computing…"
-      : `average of ${card.effectN ?? 10} runs, ±${(se ?? 0).toFixed(1)} min (1 s.e.); ` +
-        "a single run will vary more";
 
-    const item = document.createElement("div");
-    item.className = "card-item";
-
-    const row = document.createElement("div");
-    row.className = "card-row";
-
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = "card" + (on ? " on" : "");
-    btn.setAttribute("aria-pressed", String(on));
-    btn.innerHTML =
-      `<span class="dot"></span><span class="t">${card.label}</span>` +
-      `<span class="eff${zero ? " zero" : bad ? " bad" : unsure ? " unsure" : ""}" ` +
-      `title="Effect of switching this policy on or off with the rest of your ` +
-      `settings as they are. ${tip}">${eff}</span>`;
-    btn.addEventListener("click", () => {
-      Object.assign(state.values, on ? card.off : card.on);
-      syncControls();
-      renderCards();
-      renderPilot();
-      setPreset();
-      run();
-    });
-
-    const why = document.createElement("button");
-    why.type = "button";
-    why.className = "card-q";
-    why.textContent = "?";
-    why.setAttribute("aria-expanded", "false");
-    why.setAttribute("aria-label", `What does "${card.label}" do?`);
-    why.title = "What does this do?";
-
-    const note = document.createElement("p");
-    note.className = "card-note";
-    note.hidden = true;
-    note.textContent = card.note || "";
-
-    why.addEventListener("click", (e) => {
-      e.stopPropagation();
-      const open = note.hidden;
-      note.hidden = !open;
-      why.setAttribute("aria-expanded", String(open));
-      why.classList.toggle("open", open);
-    });
-
-    row.append(btn, why);
-    item.append(row, note);
-    host.appendChild(item);
-  }
+    effEl.textContent = text;
+    effEl.className =
+      "eff" +
+      (tiny ? " zero" : card.effect != null && !tiny && card.effect >= 0.08 ? " bad" : "") +
+      (unsure ? " unsure" : "");
+    effEl.title =
+      "Effect of switching this policy on or off with the rest of your settings " +
+      `as they are. ${card.effect == null ? "computing…" : `average of ${card.effectN ?? 10} runs, ±${(se ?? 0).toFixed(1)} min (1 s.e.); a single run will vary more`}`;
+  });
 }
 
 /** Mean wait with a card applied on its own, one card per tick so the main
@@ -972,7 +1006,7 @@ function computeEffects() {
         card.effect = on.m - off.m;
         card.effectSE = Math.hypot(on.se, off.se);
         card.effectN = seeds.length;
-        renderCards();
+        paintCards();
         renderPilot();
         renderValue();
       } else {
@@ -1291,6 +1325,8 @@ function init() {
   const setSheet = (open) => {
     document.body.classList.toggle("sheet-open", open);
     sheet?.setAttribute("aria-expanded", String(open));
+    // otherwise the collapsed sheet re-opens showing wherever you left it
+    if (!open) document.getElementById("panel").scrollTop = 0;
   };
   sheet?.addEventListener("click", () =>
     setSheet(!document.body.classList.contains("sheet-open"))
@@ -1310,6 +1346,21 @@ function init() {
   });
   $("#tourSkip").addEventListener("click", endTour);
   $("#shareBtn").addEventListener("click", copyLink);
+
+  $("#printBtn")?.addEventListener("click", () => {
+    document.querySelectorAll("details").forEach((d) => { d.open = true; });
+    setTimeout(() => window.print(), 120);
+  });
+
+  $("#applyRec")?.addEventListener("click", () => {
+    state.values = { ...PRESETS.recommended };
+    syncControls();
+    renderCards();
+    renderPilot();
+    setPreset("recommended");
+    run();
+    if (IS_PHONE) setSheet(false);
+  });
 
   let seenTour = false;
   try { seenTour = localStorage.getItem("hg_tour_done") === "1"; } catch {}

@@ -12,7 +12,7 @@
     <div id="app">
       <aside id="panel">
         <button id="sheetToggle" class="sheet-handle" aria-expanded="false"
-                aria-label="Show controls"><span></span></button>
+                aria-label="Show controls"><span></span><em class="sheet-close">close</em></button>
         <header class="brand">
           <svg class="logo" viewBox="0 0 64 44" aria-hidden="true">
             <ellipse cx="32" cy="40" rx="25" ry="3.2" fill="#2e3138" opacity=".12"/>
@@ -40,6 +40,9 @@
         <div class="presets">
           <button data-preset="baseline" class="active">Current process</button>
           <button data-preset="smart">Smart dispatch</button>
+          <button data-preset="recommended" class="preset-rec">
+            ★ Recommended package
+          </button>
           <span id="presetEdited" class="preset-edited" hidden>edited</span>
         </div>
 
@@ -71,6 +74,9 @@
             Doing everything is not the goal: at 12 seconds the taxis are queueing, which costs
             drivers money and they stop coming.
           </p>
+          <button id="applyRec" class="rec-cta">
+            Apply the recommended package: ticket + quota → about 3 minutes
+          </button>
         </section>
 
         <div id="policyCards" class="cards"></div>
