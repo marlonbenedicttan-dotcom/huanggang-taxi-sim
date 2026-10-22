@@ -109,20 +109,13 @@ export class PixelScene {
     this.canvas.width = cw;
     this.canvas.height = ch;
     this.dpr = dpr;
-    this.portrait = rect.height > rect.width * 1.15;
+    this.portrait = rect.height > rect.width * 1.6;
 
     // a tall screen gets its own framing: a narrower slice of the hall and a
     // more top-down ground, so the scene fills the panel instead of sitting in
     // a letterboxed strip with acres of grass above and below
-    const v = this.portrait ? PORTRAIT : LANDSCAPE;
-    if (W !== v.W || H !== v.H) {
-      W = v.W; H = v.H;
-      this.buf.width = W;
-      this.buf.height = H;
-      this.g = this.buf.getContext("2d");
-      this.g.imageSmoothingEnabled = false;
-    }
-    U = v.U; V = v.V; OX = v.OX; OY = v.OY;
+    this.view = this.portrait ? PORTRAIT : LANDSCAPE;
+    this._applyView();
     // fit the 16:9 buffer, letterboxing with grass so the frame never jumps
     this.scale = Math.min(cw / W, ch / H);
     this.offX = Math.round((cw - W * this.scale) / 2);
@@ -131,6 +124,24 @@ export class PixelScene {
       ? Math.round(48 * dpr)
       : Math.round((ch - H * this.scale) / 2);
     this.ctx.imageSmoothingEnabled = false;
+  }
+
+  _applyView() {
+    const v = this.view;
+    if (!v) return;
+    if (W !== v.W || H !== v.H) {
+      W = v.W; H = v.H;
+      this.buf.width = W;
+      this.buf.height = H;
+      this.g = this.buf.getContext("2d");
+      this.g.imageSmoothingEnabled = false;
+    }
+    U = v.U; V = v.V; OX = v.OX; OY = v.OY;
+    this.scale = Math.min(this.canvas.width / W, this.canvas.height / H);
+    this.offX = Math.round((this.canvas.width - W * this.scale) / 2);
+    this.offY = this.portrait
+      ? Math.round(48 * (this.dpr || 1))
+      : Math.round((this.canvas.height - H * this.scale) / 2);
   }
 
   setQuality(q) {
@@ -163,9 +174,13 @@ export class PixelScene {
   /** CSS pixels for a world point — used by the HTML zone counters. */
   project(x, y, z) {
     const s = this.scale / (this.dpr || 1);
+    // the floating counters live in the stage, not the canvas, so add the
+    // canvas's own offset — in the split view that is half the stage
+    const cr = this.canvas.getBoundingClientRect();
+    const host = this.canvas.parentElement?.getBoundingClientRect() || { left: 0, top: 0 };
     return {
-      x: this.offX / (this.dpr || 1) + X(x) * s,
-      y: this.offY / (this.dpr || 1) + (Z(z) - (y || 0) * 13) * s,
+      x: cr.left - host.left + this.offX / (this.dpr || 1) + X(x) * s,
+      y: cr.top - host.top + this.offY / (this.dpr || 1) + (Z(z) - (y || 0) * 13) * s,
       z: 0,
     };
   }
@@ -222,13 +237,18 @@ export class PixelScene {
       const k = slot % 48;
       const col = k % 12, row = Math.floor(k / 12);
       const qx = 13.4 + col * 0.8 + layer * 0.16;
-      const qz = LANES[CLS[clsId]] + [-1.65, -0.55, 0.55, 1.65][row] + layer * 0.10;
+      const qz = LANES[CLS[clsId]] + [-2.05, -0.68, 0.68, 2.05][row] + layer * 0.10;
       const jx = (((id * 37) % 17) / 17 - 0.5) * 0.22;
       const jz = (((id * 53) % 19) / 19 - 0.5) * 0.20;
       let e = this.people.get(id);
       if (!e) {
         const [dx, dz] = doorPos(clsId);
-        e = { x: dx, z: dz, tx: qx, tz: qz, cls: clsId, leaving: false, wait: 0.2, seed: id };
+        // walk out of the doors, down the aisle, then cut into the queue
+        e = {
+          x: dx + (((id * 31) % 7) - 3) * 0.16, z: dz,
+          tx: qx, tz: qz, cls: clsId, leaving: false, wait: 0.2, seed: id,
+          path: [[dx, LANES[CLS[clsId]] - 3.4]],
+        };
         this.people.set(id, e);
       }
       e.tx = qx + jx;
@@ -239,9 +259,10 @@ export class PixelScene {
       if (seenP.has(id)) continue;
       if (!e.leaving) {
         e.leaving = true;
-        e.tx = 38.2;
-        e.tz = LANES[CLS[e.cls]];
+        e.tx = 38.2 - (e.seed % 3) * 0.5;
+        e.tz = LANES[CLS[e.cls]] + ((e.seed % 5) - 2) * 0.22;
         e.wait = 0.35;
+        e.path = [[e.x, LANES[CLS[e.cls]] - 3.0]];
       }
     }
 
@@ -263,7 +284,7 @@ export class PixelScene {
     const col = k % 12, row = Math.floor(k / 12);
     return [
       13.4 + col * 0.8 + layer * 0.16,
-      LANES[CLS[clsId]] + [-1.65, -0.55, 0.55, 1.65][row] + layer * 0.10,
+      LANES[CLS[clsId]] + [-2.05, -0.68, 0.68, 2.05][row] + layer * 0.10,
     ];
   }
 
@@ -298,7 +319,20 @@ export class PixelScene {
 
     for (const [id, e] of this.people) {
       if (e.wait > 0) { e.wait -= step; continue; }
-      const dx = e.tx - e.x, dz = e.tz - e.z;
+
+      // follow waypoints first (the aisle), then head for the slot
+      let gx = e.tx, gz = e.tz;
+      if (e.path && e.path.length) {
+        const [wx, wz] = e.path[0];
+        if (Math.hypot(wx - e.x, wz - e.z) < 0.18) {
+          e.path.shift();
+          if (e.path.length) { gx = e.path[0][0]; gz = e.path[0][1]; }
+        } else {
+          gx = wx; gz = wz;
+        }
+      }
+
+      const dx = gx - e.x, dz = gz - e.z;
       const d = Math.hypot(dx, dz);
       if (d > 6) {
         e.x = e.tx; e.z = e.tz;
@@ -345,6 +379,7 @@ export class PixelScene {
    * drawing
    * ================================================================== */
   render() {
+    this._applyView();          // compare view: panels have different sizes
     const g = this.g;
     g.clearRect(0, 0, W, H);
 
@@ -470,13 +505,13 @@ export class PixelScene {
       g.fillStyle = "rgba(250,246,232,0.28)";
       for (let i = 0; i < 12; i++) {
         const x = Math.round(X(13.4 + i * 0.8));
-        for (const dz of [-1.65, -0.55, 0.55, 1.65]) {
+        for (const dz of [-2.05, -0.68, 0.68, 2.05]) {
           g.fillRect(x, Math.round(Z(z + dz) - 2), 1, 4);
         }
       }
       // the queue pad itself is a shade lighter than the lane
       g.fillStyle = "rgba(255,255,255,0.05)";
-      g.fillRect(X(13.2), Z(z - 1.85), X(23.2) - X(13.2), Z(z + 1.85) - Z(z - 1.85));
+      g.fillRect(X(13.2), Z(z - 2.3), X(23.2) - X(13.2), Z(z + 2.3) - Z(z - 2.3));
     }
 
     // bay pads + numbers
@@ -578,33 +613,56 @@ export class PixelScene {
     g.fillStyle = PAL.wallShade;
     g.fillRect(left, base - 4, right - left, 4);
 
-    // windows: two rows, one pane every 2.2 units
-    for (let x = 1.5; x < 47; x += 2.4) {
-      const wx = Math.round(X(x));
-      for (const row of [0, 1]) {
-        const wy = Math.round(top + 8 + row * 12);
-        g.fillStyle = "#8a6f52";
-        g.fillRect(wx - 1, wy - 1, 11, 9);
-        g.fillStyle = PAL.window;
-        g.fillRect(wx, wy, 9, 7);
-        g.fillStyle = PAL.windowLit;
-        g.fillRect(wx + 1, wy + 1, 3, 2);
+    // windows: irregular bays and the odd solid pier, so the frontage is not
+    // a repeating strip of identical rectangles
+    const BAYS = [2.5, 3.3, 2.1, 3.0, 2.6, 3.5, 2.2, 2.8];
+    let bx = 0.8;
+    let bi = 0;
+    while (bx < 47) {
+      const wUnits = BAYS[bi % BAYS.length];
+      const wx = Math.round(X(bx));
+      const wpx = Math.round(wUnits * U) - 3;
+      const pier = bi % 7 === 3;
+
+      g.fillStyle = "#d9c6a4";
+      g.fillRect(wx, top, Math.round(wUnits * U), wallH);
+
+      if (!pier && wpx > 5) {
+        for (const row of [0, 1]) {
+          const wy = Math.round(top + 8 + row * 12);
+          g.fillStyle = "#8a6f52";
+          g.fillRect(wx + 1, wy - 1, wpx + 2, 9);
+          g.fillStyle = PAL.window;
+          g.fillRect(wx + 2, wy, wpx, 7);
+          g.fillStyle = PAL.windowLit;
+          g.fillRect(wx + 3, wy + 1, Math.max(2, (wpx / 2) | 0), 2);
+        }
       }
+      bx += wUnits;
+      bi++;
     }
 
     // ground floor: a darker plinth, shopfronts and columns
     g.fillStyle = "#e2cfae";
     g.fillRect(left, base - 26, right - left, 26);
-    let kiosk = 0;
-    for (let x = 1; x < 47; x += 3.2) {
-      const wx = Math.round(X(x));
-      const lit = kiosk++ % 3 === 0;
-      g.fillStyle = lit ? "#6c5a3f" : "#3f5561";
-      g.fillRect(wx, base - 22, 22, 16);
-      g.fillStyle = lit ? "#f2d79a" : "#e9c887";
-      g.fillRect(wx + 1, base - 21, 20, 2);
-      g.fillStyle = lit ? "rgba(255,225,160,0.35)" : "rgba(255,255,255,0.10)";
-      g.fillRect(wx + 1, base - 19, lit ? 20 : 6, 13);
+    const SHOP = [3.0, 3.8, 2.4, 3.2, 2.6];
+    let sx2 = 1;
+    let si = 0;
+    while (sx2 < 46) {
+      const wUnits = SHOP[si % SHOP.length];
+      const wx = Math.round(X(sx2));
+      const wpx = Math.round(wUnits * U) - 4;
+      const lit = si % 3 === 0;
+      if (wpx > 6) {
+        g.fillStyle = lit ? "#6c5a3f" : "#3f5561";
+        g.fillRect(wx, base - 22, wpx, 16);
+        g.fillStyle = lit ? "#f2d79a" : "#e9c887";
+        g.fillRect(wx + 1, base - 21, wpx - 2, 2);
+        g.fillStyle = lit ? "rgba(255,225,160,0.35)" : "rgba(255,255,255,0.10)";
+        g.fillRect(wx + 1, base - 19, lit ? wpx - 2 : Math.max(3, (wpx / 3) | 0), 13);
+      }
+      sx2 += wUnits;
+      si++;
     }
     g.fillStyle = "#c9b494";
     for (let x = 0; x < 48; x += 6.4) g.fillRect(Math.round(X(x)), base - 26, 2, 26);
@@ -648,6 +706,18 @@ export class PixelScene {
     g.fillRect(cLeft, base - 9, cRight - cLeft, 5);
     g.fillStyle = "#3d9d84";
     g.fillRect(cLeft, base - 9, cRight - cLeft, 1);
+
+    // floor band and pilasters between the window rows and the shopfronts
+    const bandY = Math.round(top + 29);
+    g.fillStyle = "#e3cfae";
+    g.fillRect(left, bandY, right - left, 11);
+    g.fillStyle = "#cdb894";
+    g.fillRect(left, bandY, right - left, 1);
+    g.fillRect(left, bandY + 10, right - left, 1);
+    for (let x = 0; x < 48; x += 6.4) {
+      g.fillStyle = "#d3bd9a";
+      g.fillRect(Math.round(X(x)), bandY, 1, 11);
+    }
 
     // sign plate sits on the roof band, not floating in the grass
     const sw = textWidth("HUANGGANG PORT", 2) + 12;
@@ -788,6 +858,18 @@ export class PixelScene {
     if (p.kind === "lamp") {
       g.fillStyle = "#8f8778";
       g.fillRect(Math.round(x - 2), Math.round(y - 2), 5, 3);
+      const lit = this.hour > 17.2 || this.hour < 8.4;
+      if (lit) {
+        const ly = Math.round(y - spr.height + 1);
+        for (let r = 9; r > 0; r -= 3) {
+          g.fillStyle = `rgba(255,214,140,${0.10 + (9 - r) * 0.02})`;
+          g.beginPath();
+          g.ellipse(x, ly, r, r * 0.8, 0, 0, Math.PI * 2);
+          g.fill();
+        }
+        g.fillStyle = "#ffe9b0";
+        g.fillRect(Math.round(x - 1), ly - 1, 3, 3);
+      }
     }
     this._shadow(x, y + 1, p.kind === "tree" ? 7 : 4);
     g.drawImage(spr, Math.round(x - spr.width / 2), Math.round(y - spr.height));
@@ -814,15 +896,23 @@ export class PixelScene {
     }
     g.restore();
 
-    // hour tint: warm early, cool late
+    // hour tint: warm early, neutral at midday, deep blue at close
     const t = Math.min(1, Math.max(0, (this.hour - 8) / 12));
-    g.globalAlpha = 0.10 * (1 - t);
-    g.fillStyle = "#ff9a4d";
-    g.fillRect(0, 0, W, H);
-    g.globalAlpha = 0.14 * Math.max(0, t - 0.55) / 0.45;
-    g.fillStyle = "#2b4a7a";
-    g.fillRect(0, 0, W, H);
-    g.globalAlpha = 1;
+    if (t < 0.45) {
+      g.globalAlpha = 0.16 * (1 - t / 0.45);
+      g.fillStyle = "#ffa45c";
+      g.fillRect(0, 0, W, H);
+      g.globalAlpha = 1;
+    } else if (t > 0.5) {
+      const k = (t - 0.5) / 0.5;
+      g.globalAlpha = 0.30 * k;
+      g.fillStyle = "#27406e";
+      g.fillRect(0, 0, W, H);
+      g.globalAlpha = 0.16 * k;
+      g.fillStyle = "#0f1c33";
+      g.fillRect(0, 0, W, H);
+      g.globalAlpha = 1;
+    }
   }
 
   _drawFrame() {

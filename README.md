@@ -72,7 +72,7 @@ fair.
 | `taxi_sim/plots.py` | figures |
 | `tests/test_engine.py` | 9 invariant tests (conservation, Little's law, capacity bounds) |
 | `tests/parity_check.py` | proves the website's engine matches the Python research model |
-| `web/` | the interactive 3D simulator (static site — see section 2b) |
+| `web/` | the interactive 2.5D pixel simulator (static site — see section 2b) |
 | `serve.py` | local preview server for the website |
 | `render.yaml` | one-click deploy to Render |
 | `config_site.example.json` | template for your own field measurements |
@@ -90,17 +90,21 @@ python run_experiments.py --config config_site.json   # use your field data
 python tests/test_engine.py               # invariant tests
 ```
 
-## 2b. Interactive 3D simulator (website)
+## 2b. Interactive 2.5D pixel simulator (website)
 
-> **Visual direction.** The 3D view uses a line-art isometric style: white fills,
-> ink silhouettes and one accent colour. It was inspired by
-> [Khalidabdi1/factory](https://github.com/Khalidabdi1/factory) (MIT), a browser
-> isometric world that includes a container port. No code or assets were copied
-> — only the look — but the debt is worth stating.
+> **Visual direction.** The scene is hand-authored pixel art in a 2.5D
+> arrangement: the ground is drawn in plan, while taxis, people and props are
+> billboard sprites anchored at their feet and sorted by depth. This is the
+> "Stardew" camera — the whole rank stays visible, but the vehicles still have
+> silhouettes. Every sprite is a character grid in `web/js/pixel/sprites.js`;
+> there are no image files, models or texture downloads.
 
-`web/` is a self-contained static site: a 3D view of the taxi hall with sliders
-for every input. It is the same model as the Python engine, re-implemented in
-JavaScript so it can be hosted for free with **no server and no cold start**.
+`web/` is a self-contained static site: a pixel view of the taxi hall with
+sliders for every input. It is the same model as the Python engine,
+re-implemented in JavaScript so it can be hosted for free with **no server and
+no cold start**. The renderer draws into a 640x360 buffer and scales with
+nearest-neighbour, so the pixel size is constant at any window size; portrait
+screens get their own framing rather than a letterboxed strip.
 
 ![Current process at the evening peak](docs/evening_current_process.png)
 
@@ -129,7 +133,7 @@ for N replications and refuses to claim an effect when the 95% intervals overlap
 * **Shareable** — *copy link* encodes the whole scenario in the URL, and a
   3-step tour runs on the first visit.
 * On a phone the split becomes an **A/B swap** (one scene at a time, `Show A`
-  button) because two live 3D scenes would waste memory on a phone.
+  button) because two live scenes would waste memory on a phone.
 
 **What you can do**
 
