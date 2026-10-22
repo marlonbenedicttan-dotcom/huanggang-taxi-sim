@@ -1001,9 +1001,11 @@ function paintCards() {
         ? "≈ 0"
         : `${card.effect >= 0 ? "+" : ""}${card.effect.toFixed(1)} min`;
 
-    effEl.textContent = text;
+    const loading = card.effect == null || !Number.isFinite(card.effect);
+    effEl.textContent = loading ? "" : text;
     effEl.className =
       "eff" +
+      (loading ? " skeleton" : "") +
       (tiny ? " zero" : card.effect != null && !tiny && card.effect >= 0.08 ? " bad" : "") +
       (unsure ? " unsure" : "");
     effEl.title =
@@ -1362,24 +1364,69 @@ function init() {
 
   scene.setQuality(valueOf("highQuality") ? "high" : "low");
 
+  let effectsReady = false;
   const sheet = $("#sheetToggle");
-  const setSheet = (open) => {
+  const panelEl = document.getElementById("panel");
+  const scrollEl = document.getElementById("panelScroll");
+  let sheetState = "peek";
+
+  const applySheet = (state) => {
+    sheetState = state;
+    const open = state !== "peek";
     document.body.classList.toggle("sheet-open", open);
+    document.body.classList.toggle("sheet-half", state === "half");
+    document.body.classList.toggle("sheet-full", state === "full");
     sheet?.setAttribute("aria-expanded", String(open));
-    // otherwise the collapsed sheet re-opens showing wherever you left it
-    if (!open) {
-      const sc = document.getElementById("panelScroll");
-      if (sc) sc.scrollTop = 0;
+    panelEl.style.height = "";
+    if (open && !effectsReady && IS_PHONE) {
+      effectsReady = true;
+      setTimeout(computeEffects, 200);
     }
+    if (!open && scrollEl) scrollEl.scrollTop = 0;
   };
-  sheet?.addEventListener("click", () =>
-    setSheet(!document.body.classList.contains("sheet-open"))
-  );
+  window.__setSheet = (open) => applySheet(open ? "half" : "peek");
+
+  // tap cycles peek -> half -> full -> peek
+  sheet?.addEventListener("click", () => {
+    applySheet(sheetState === "peek" ? "half" : sheetState === "half" ? "full" : "peek");
+  });
+
+  // drag the handle to snap between the three heights
+  if (sheet && IS_PHONE) {
+    let startY = 0;
+    let startH = 0;
+    let dragging = false;
+
+    sheet.addEventListener("pointerdown", (e) => {
+      dragging = true;
+      startY = e.clientY;
+      startH = panelEl.getBoundingClientRect().height;
+      sheet.setPointerCapture?.(e.pointerId);
+    });
+    sheet.addEventListener("pointermove", (e) => {
+      if (!dragging) return;
+      const dy = startY - e.clientY;
+      const h = Math.max(90, Math.min(innerHeight * 0.92, startH + dy));
+      panelEl.style.height = `${Math.round(h)}px`;
+      document.body.classList.add("sheet-open");
+    });
+    const endDrag = () => {
+      if (!dragging) return;
+      dragging = false;
+      const h = panelEl.getBoundingClientRect().height;
+      const opts = [["peek", 150], ["half", innerHeight * 0.46], ["full", innerHeight * 0.86]];
+      let best = opts[0];
+      for (const o of opts) if (Math.abs(o[1] - h) < Math.abs(best[1] - h)) best = o;
+      applySheet(best[0]);
+    };
+    sheet.addEventListener("pointerup", endDrag);
+    sheet.addEventListener("pointercancel", endDrag);
+  }
 
   $("#runBtn").addEventListener("click", () => {
     run();
     // on a phone, get out of the way so the result is visible immediately
-    if (IS_PHONE) setSheet(false);
+    if (IS_PHONE) applySheet("peek");
   });
 
   renderCards();
@@ -1404,7 +1451,7 @@ function init() {
     renderPilot();
     setPreset("recommended");
     run();
-    if (IS_PHONE) setSheet(false);
+    if (IS_PHONE) applySheet("peek");
   });
 
   let seenTour = false;
