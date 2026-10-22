@@ -79,6 +79,14 @@ class Config:
     taxi_supply_basis_pax: float = 550.0    # demand level the supply was measured at
     taxi_supply_ratio_urban: float = 1.05   # supply / demand (1.0 = balanced)
     taxi_supply_ratio_nt: float = 0.95      # NT taxis are scarcer
+    # ---- driver incentives ---------------------------------------------
+    # A port trip is worth less than a city trip while the return leg is a
+    # gamble, so drivers skip the port. These policies raise the expected
+    # value of the trip and therefore the supply that turns up. The
+    # coefficients below are illustrative, not measured (see README).
+    backhaul_match: float = 0.0             # 0-1: share of trips with a matched return fare
+    port_surcharge_hkd: float = 0.0         # regulated extra fare on port pickups
+    wait_allowance_hkd: float = 0.0         # paid per minute waiting in the queue
     supply_lag_hours: int = 1               # drivers react one hour late
     supply_flatness: float = 0.55           # 0 = follows demand, 1 = flat
     buffer_capacity: int = 40               # spaces per taxi lane (urban / NT)
@@ -253,9 +261,15 @@ class Simulation:
             "nt": parties * (1 - cfg.prebook_share) * (1 - cfg.urban_share),
             "prebook": parties * cfg.prebook_share,
         }
+        incentive = (
+            1.0
+            + 0.60 * cfg.backhaul_match
+            + 0.45 * (cfg.port_surcharge_hkd / 50.0)
+            + 0.30 * (cfg.wait_allowance_hkd / 4.0)
+        )
         self.supply_ratio = {
-            "urban": cfg.taxi_supply_ratio_urban,
-            "nt": cfg.taxi_supply_ratio_nt,
+            "urban": cfg.taxi_supply_ratio_urban * incentive,
+            "nt": cfg.taxi_supply_ratio_nt * incentive,
             "prebook": cfg.prebook_supply_ratio,
         }
         # empty-taxi flow is anchored to the observed demand level

@@ -66,6 +66,12 @@ export const DEFAULTS = {
   taxiSupplyBasisPax: 550,
   taxiSupplyRatioUrban: 1.05,
   taxiSupplyRatioNt: 0.95,
+  // driver incentives: each raises the expected value of a port trip, which
+  // raises how many empty taxis choose to come. Coefficients are illustrative
+  // (see README "what the incentives actually assume").
+  backhaulMatch: 0,
+  portSurchargeHkd: 0,
+  waitAllowanceHkd: 0,
   supplyLagHours: 2,
   supplyFlatness: 0.55,
   prebookSupplyRatio: 1.15,
@@ -277,9 +283,17 @@ export class Simulation {
       nt: supplyParties * (1 - cfg.prebookShare) * (1 - cfg.urbanShare),
       prebook: supplyParties * cfg.prebookShare,
     };
+    // A port trip is worth less than a city trip while the return leg is a
+    // gamble. These policies raise that value, so more drivers accept the run.
+    const incentive =
+      1 +
+      0.6 * (cfg.backhaulMatch || 0) +
+      0.45 * ((cfg.portSurchargeHkd || 0) / 50) +
+      0.3 * ((cfg.waitAllowanceHkd || 0) / 4);
+
     this.supplyRatio = {
-      urban: cfg.taxiSupplyRatioUrban,
-      nt: cfg.taxiSupplyRatioNt,
+      urban: cfg.taxiSupplyRatioUrban * incentive,
+      nt: cfg.taxiSupplyRatioNt * incentive,
       prebook: cfg.prebookSupplyRatio,
     };
   }

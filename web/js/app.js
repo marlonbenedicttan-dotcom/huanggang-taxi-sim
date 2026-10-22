@@ -46,6 +46,17 @@ const GROUPS = [
     ],
   },
   {
+    name: "Driver incentives",
+    items: [
+      { key: "backhaulMatch", label: "Port trips with a matched return fare", min: 0, max: 1, step: 0.05, pct: true,
+        hint: "Share of port pickups where a return passenger is matched before the taxi arrives. Removes the fear of an empty drive back — the reason many drivers skip the port." },
+      { key: "portSurchargeHkd", label: "Extra fare on a port pickup", min: 0, max: 50, step: 5, unit: "HKD",
+        hint: "A regulated surcharge added to fares leaving the port. Raises what the trip is worth, so more drivers come. The cost lands on the passenger." },
+      { key: "waitAllowanceHkd", label: "Paid per minute in the queue", min: 0, max: 4, step: 0.5, unit: "HKD/min",
+        hint: "Compensation for time spent waiting at the port. Makes a long queue survivable, but the operator pays for every idle minute." },
+    ],
+  },
+  {
     name: "Pickup hall",
     items: [
       { key: "stands.nt", label: "New Territories bays", min: 1, max: 8, step: 1, int: true,
@@ -83,6 +94,7 @@ const GROUPS = [
 const POLICY_KEYS = [
   "dispatchIntervalMin", "dispatchBatch", "pooledStands", "appShare",
   "flexShare", "misrouteProb", "stands.urban", "stands.nt", "taxiSupplyRatioNt",
+  "backhaulMatch", "portSurchargeHkd", "waitAllowanceHkd",
 ];
 
 const IS_PHONE =
@@ -104,6 +116,7 @@ const PRESETS = {
     "stands.urban": 8, "stands.nt": 3, service: 1.5, bufferCapacity: 40,
     dispatchIntervalMin: 1, dispatchBatch: 8, misrouteProb: 0.06,
     appShare: 0, pooledStands: false, patienceMeanMin: 35,
+    backhaulMatch: 0, portSurchargeHkd: 0, waitAllowanceHkd: 0,
   },
   smart: {
     paxPerHour: 550, urbanShare: 0.75, prebookShare: 0.1,
@@ -111,6 +124,7 @@ const PRESETS = {
     "stands.urban": 10, "stands.nt": 4, service: 1.5, bufferCapacity: 40,
     dispatchIntervalMin: 0, dispatchBatch: 8, misrouteProb: 0.01,
     appShare: 0.85, pooledStands: true, patienceMeanMin: 35,
+    backhaulMatch: 0, portSurchargeHkd: 0, waitAllowanceHkd: 0,
   },
 };
 
@@ -367,6 +381,9 @@ function buildConfig(vals = state.values) {
     misrouteProb: valueOf("misrouteProb"),
     appShare: valueOf("appShare"),
     fastCheckinFactor: valueOf("appShare") > 0 ? 0.75 : 1,
+    backhaulMatch: valueOf("backhaulMatch"),
+    portSurchargeHkd: valueOf("portSurchargeHkd"),
+    waitAllowanceHkd: valueOf("waitAllowanceHkd"),
     pooledStands: !!valueOf("pooledStands"),
     patienceMeanMin: valueOf("patienceMeanMin"),
     anim: { from, to, step },
@@ -708,36 +725,89 @@ const CARDS = [
     on: { dispatchIntervalMin: 0 },
     off: { dispatchIntervalMin: 1 },
     isOn: (v) => Number(v.dispatchIntervalMin) === 0,
+    note:
+      "Release taxis the moment they arrive instead of holding them for a batch " +
+      "every minute. It removes a wait the hall creates for itself, costs nothing, " +
+      "and needs only a staffing change.",
   },
   {
     label: "Pooled pickup bays",
     on: { pooledStands: true },
     off: { pooledStands: false },
     isOn: (v) => !!v.pooledStands,
+    note:
+      "Any bay can serve any queue, so a quiet lane lends its space to a busy one. " +
+      "It only works if drivers are told which bay to use — otherwise they queue " +
+      "in the wrong lane.",
   },
   {
     label: "App pre-registration",
     on: { appShare: 0.85 },
     off: { appShare: 0 },
     isOn: (v) => Number(v.appShare) > 0,
+    note:
+      "Passengers check in on their phone before they arrive: boarding is quicker " +
+      "and the hall knows how many are coming. The biggest single win in this model, " +
+      "but it depends on passengers actually adopting the app.",
   },
   {
     label: "Flexible taxis",
     on: { flexShare: 0.35 },
     off: { flexShare: 0 },
     isOn: (v) => Number(v.flexShare) > 0,
+    note:
+      "Let a taxi serve either destination instead of being tied to one queue. " +
+      "Smooths the mismatch between the lanes, but needs a regulatory change and " +
+      "some drivers will refuse the longer trip.",
   },
   {
     label: "Two extra bays",
     on: { "stands.urban": 10, "stands.nt": 4 },
     off: { "stands.urban": 8, "stands.nt": 3 },
     isOn: (v) => Number(v["stands.urban"]) > 8 || Number(v["stands.nt"]) > 3,
+    note:
+      "Build out two more bays. It raises the ceiling on how many taxis can board " +
+      "at once, but it is capital works: slow to deliver and expensive per minute " +
+      "of wait saved.",
   },
   {
     label: "Balance NT supply",
     on: { taxiSupplyRatioNt: 1.05 },
     off: { taxiSupplyRatioNt: 0.95 },
     isOn: (v) => Number(v.taxiSupplyRatioNt) > 1,
+    note:
+      "Top up New Territories taxi supply until it matches demand. This is the same " +
+      "lever as the driver incentives below, applied to one lane only.",
+  },
+  {
+    label: "Guaranteed return fare",
+    on: { backhaulMatch: 0.7 },
+    off: { backhaulMatch: 0 },
+    isOn: (v) => Number(v.backhaulMatch) > 0,
+    note:
+      "Match each taxi with a return passenger before it arrives, so the drive back " +
+      "is paid. This is the direct answer to why drivers avoid the port: the fear of " +
+      "an empty return leg. It needs a booking system, not money.",
+  },
+  {
+    label: "Port pickup surcharge",
+    on: { portSurchargeHkd: 30 },
+    off: { portSurchargeHkd: 0 },
+    isOn: (v) => Number(v.portSurchargeHkd) > 0,
+    note:
+      "Add a regulated extra fare to trips leaving the port. It raises what the trip " +
+      "is worth, so more drivers come — but the cost lands on the passenger, and it " +
+      "is regressive for short trips.",
+  },
+  {
+    label: "Waiting-time allowance",
+    on: { waitAllowanceHkd: 2 },
+    off: { waitAllowanceHkd: 0 },
+    isOn: (v) => Number(v.waitAllowanceHkd) > 0,
+    note:
+      "Pay drivers for time spent in the queue. It makes a long wait survivable, " +
+      "but the operator pays for every idle minute — the more successful it is at " +
+      "attracting taxis, the more it costs.",
   },
 ];
 
@@ -765,21 +835,30 @@ function renderCards() {
   const host = $("#policyCards");
   if (!host) return;
   host.innerHTML = "";
+
   for (const card of CARDS) {
     const on = card.isOn(state.values);
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = "card" + (on ? " on" : "");
-    btn.setAttribute("aria-pressed", String(on));
     const eff =
       card.effect == null
         ? "…"
         : `${card.effect >= 0 ? "+" : ""}${card.effect.toFixed(1)} min`;
     const zero = card.effect != null && Math.abs(card.effect) < 0.08;
     const bad = card.effect != null && card.effect >= 0.08;
+
+    const item = document.createElement("div");
+    item.className = "card-item";
+
+    const row = document.createElement("div");
+    row.className = "card-row";
+
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "card" + (on ? " on" : "");
+    btn.setAttribute("aria-pressed", String(on));
     btn.innerHTML =
       `<span class="dot"></span><span class="t">${card.label}</span>` +
-      `<span class="eff${zero ? " zero" : bad ? " bad" : ""}" title="effect on mean wait when applied alone (this window)">${eff}</span>`;
+      `<span class="eff${zero ? " zero" : bad ? " bad" : ""}" ` +
+      `title="effect on mean wait when applied alone (this window)">${eff}</span>`;
     btn.addEventListener("click", () => {
       Object.assign(state.values, on ? card.off : card.on);
       syncControls();
@@ -787,7 +866,31 @@ function renderCards() {
       setPreset(null);
       run();
     });
-    host.appendChild(btn);
+
+    const why = document.createElement("button");
+    why.type = "button";
+    why.className = "card-q";
+    why.textContent = "?";
+    why.setAttribute("aria-expanded", "false");
+    why.setAttribute("aria-label", `What does "${card.label}" do?`);
+    why.title = "What does this do?";
+
+    const note = document.createElement("p");
+    note.className = "card-note";
+    note.hidden = true;
+    note.textContent = card.note || "";
+
+    why.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const open = note.hidden;
+      note.hidden = !open;
+      why.setAttribute("aria-expanded", String(open));
+      why.classList.toggle("open", open);
+    });
+
+    row.append(btn, why);
+    item.append(row, note);
+    host.appendChild(item);
   }
 }
 
@@ -796,7 +899,7 @@ function renderCards() {
 function computeEffects() {
   let base = null;
   let i = 0;
-  const seeds = [11, 12];
+  const seeds = [11, 12, 13, 14, 15, 16];   // 2 was far too noisy to rank policies
   const avg = (cfg) =>
     seeds.reduce((a, s) => a + runSimulation(cfg, s).metrics.waitMean, 0) / seeds.length;
 
@@ -1207,6 +1310,8 @@ function init() {
     scene,
     state,
     setCompare,
+    buildConfig,
+    referenceValues,
     getSceneB: () => sceneB,
     /** Let the walkers reach their targets (used for stills and video). */
     settle(seconds = 3) {

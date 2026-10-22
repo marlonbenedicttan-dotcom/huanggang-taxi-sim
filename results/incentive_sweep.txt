@@ -1,0 +1,24 @@
+baseline (550 pax/h, no incentives): 6.14 +- 0.55 min
+
+guaranteed return fare
+   20% of trips matched    3.89 min   -2.25
+   40% of trips matched    3.60 min   -2.54
+   60% of trips matched    3.21 min   -2.93
+   80% of trips matched    3.50 min   -2.64
+  100% of trips matched    3.18 min   -2.95
+
+port pickup surcharge
+  +10 HKD                  4.65 min   -1.48
+  +20 HKD                  3.99 min   -2.15
+  +30 HKD                  3.65 min   -2.49
+  +40 HKD                  3.21 min   -2.93
+  +50 HKD                  2.91 min   -3.23
+
+waiting-time allowance
+   1 HKD/min               4.76 min   -1.37
+   2 HKD/min               4.15 min   -1.99
+   3 HKD/min               3.71 min   -2.43
+   4 HKD/min               3.21 min   -2.93
+
+all three at once: 3.29 +- 0.39 min   -2.85
+  -> stacking them buys almost nothing over the best single policy

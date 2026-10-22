@@ -243,6 +243,49 @@ This table doubles as your data-collection plan.
 | — | **All operational** | P1+P2+P3+P4+P6, no new bays | package |
 | — | **Smart dispatch (full)** | operational package + 2 extra bays | Step 2 |
 
+### Driver incentives (supply-side policies)
+
+Every policy above acts *inside* the port. None of them help if taxis do not
+turn up — and the reason drivers skip Huanggang is the **return leg**: a taxi
+that takes a fare to the port has no guaranteed fare back, so the trip is worth
+less than an hour in the city. Three supply-side instruments are modelled:
+
+| Policy | Parameter | What the model assumes it does |
+|---|---|---|
+| Guaranteed return fare | `backhaul_match` 0–1 | the port matches a return passenger before the taxi arrives |
+| Port pickup surcharge | `port_surcharge_hkd` 0–50 | a regulated extra fare on trips leaving the port |
+| Waiting-time allowance | `wait_allowance_hkd` 0–4 | paid per minute spent queueing at the port |
+
+Supply response, identical in both engines:
+
+```
+supply = base_ratio x (1 + 0.60*backhaul + 0.45*surcharge/50 + 0.30*allowance/4)
+```
+
+**The coefficients are illustrative, not measured.** No driver supply
+elasticity has been published for this port, so
+`experiments/incentive_sweep.py` answers *"what does the model do if the
+response looks like this"* — not *"what will happen"*.
+
+Two results are robust to the coefficients, because they follow from the queue
+ceasing to be supply-limited rather than from the sizes involved:
+
+- **Incentives saturate.** Matching only 20% of return trips captures most of
+  the benefit; going to 100% adds little.
+- **They substitute rather than add.** All three at once is no better than the
+  best single policy at a moderate setting.
+
+| Setting | Mean wait (min) | vs baseline |
+|---|---|---|
+| Baseline (550 pax/h, no incentives) | 6.14 ± 0.55 | — |
+| 20% of trips matched | 3.89 | −2.25 |
+| 40% of trips matched | 3.60 | −2.54 |
+| +50 HKD surcharge | 2.91 | −3.23 |
+| 4 HKD/min allowance | 3.21 | −2.93 |
+| all three at once | 3.29 ± 0.39 | −2.85 |
+
+Eight replications per row, seeds 11–18 (`results/incentive_sweep.txt`).
+
 ## 5. Results (default calibration, 30 replications each)
 
 Mean ± 95% confidence interval. Replications use **common random numbers**, so
@@ -338,6 +381,11 @@ comparison printed at the end of every run.
   depends on it. A shorter tolerance hides the tail (censoring).
 * The pre-booked channel is modelled as an independent queue with guaranteed
   supply; interaction between fleet taxis and the walk-up pool is not modelled.
+* The supply response to driver incentives is **assumed, not estimated**: the
+  three coefficients in section 4 are a plausible shape, not a measurement.
+  The saturation and substitution results follow from the queue leaving the
+  supply-limited regime, so they survive a wide range of coefficient values —
+  but the *sizes* of the effects should not be quoted as predictions.
 * A 1-hour warm-up is discarded; results describe the 11 measured hours.
 * The service-time distribution is lognormal (CV 0.6). Exponential service is
   available (`service_dist="exp"`) for the analytical validation.
