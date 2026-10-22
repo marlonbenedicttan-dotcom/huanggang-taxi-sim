@@ -114,7 +114,7 @@ frame, so the art keeps its authored pixel size instead of resampling.
 
 *Left panel: every parameter from section 3. Right: the hall at 17:30 — 51 urban
 passengers waiting, the urban buffer drained, the NT buffer full. Toggle
-"Smart dispatch" and the same moment has no queue at all.*
+"Everything on" and the same moment has no queue at all.*
 
 **Compare a proposal against the current process**
 
@@ -124,14 +124,17 @@ passengers waiting, the urban buffer drained, the NT buffer full. Toggle
 The bar underneath states whether the difference is real: it runs both scenarios
 for N replications and refuses to claim an effect when the 95% intervals overlap.*
 
-* **Policy cards** — six measures, each showing its effect on mean wait when
+* **Policy cards** — four measures, each showing its effect on mean wait when
   applied alone, so you can see which suggestion actually moves the needle.
+  Three booking ideas were tested; only the return-trip booking survived, because
+  the fleet channel and app pre-registration are secondary (about 1.3 minutes)
+  and only pay off after the ticket. They remain in *More settings*.
 * **Diff strip** — lists only what differs (`Urban bays 8 → 10`,
   `Dispatch 1 min → continuous`), which is the literal answer to
   "did anything change?".
 * **Trials** — 1 / 10 / 30 replications, with a verdict that says
   "−55%, CIs do not overlap" or "no measurable difference".
-* **Editable in one minute** — only four headline inputs and the six policy
+* **Editable in one minute** — only four headline inputs and the four policy
   cards are shown; everything else is behind *More settings*. Sliders apply
   automatically (a run takes ~30 ms), so there is no Run button to forget.
 * **Shareable** — *copy link* encodes the whole scenario in the URL, and a
@@ -142,7 +145,7 @@ for N replications and refuses to claim an effect when the 95% intervals overlap
 **What you can do**
 
 * Drag to orbit, scroll to zoom.
-* Switch between **Current process** and **Smart dispatch** presets.
+* Switch between **As it runs today**, **Everything on** and **★ Recommended** presets.
 * Change demand, taxi supply, bays, boarding time, dispatch cycle, misapplied
   routing, app share, patience, buffer size — then hit **Run**.
 * Scrub through the day (morning peak / midday / evening peak / whole shift) and

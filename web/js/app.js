@@ -143,7 +143,7 @@ const PRESETS = {
     backhaulMatch: 0, portSurchargeHkd: 0, waitAllowanceHkd: 0,
     ticketDelayMin: 8, infoShare: 0, nightMinTaxis: 0,
   },
-  // return matching + digital ticket: 20 -> 4 min (30 replications, both
+  // return booking + digital ticket: 20 -> 4 min (30 replications, both
   // engines agree within their confidence intervals). See README.
   recommended: {
     paxPerHour: 550, urbanShare: 0.75, prebookShare: 0.1,
@@ -156,12 +156,12 @@ const PRESETS = {
   },
   smart: {
     paxPerHour: 550, urbanShare: 0.75, prebookShare: 0.1,
-    taxiSupplyRatioUrban: 1.05, taxiSupplyRatioNt: 1.05, flexShare: 0.35,
+    taxiSupplyRatioUrban: 1.05, taxiSupplyRatioNt: 0.95, flexShare: 0,
     "stands.urban": 10, "stands.nt": 4, "stands.prebook": 2, service: 1.5, bufferCapacity: 40,
-    dispatchIntervalMin: 0, dispatchBatch: 8, misrouteProb: 0.01,
-    appShare: 0.85, pooledStands: true, patienceMeanMin: 35,
-    backhaulMatch: 0, portSurchargeHkd: 0, waitAllowanceHkd: 0,
-    ticketDelayMin: 8, infoShare: 0, nightMinTaxis: 0,
+    dispatchIntervalMin: 1, dispatchBatch: 8, misrouteProb: 0.06,
+    appShare: 0, pooledStands: false, patienceMeanMin: 35,
+    backhaulMatch: 0.8, portSurchargeHkd: 0, waitAllowanceHkd: 0,
+    ticketDelayMin: 1.5, infoShare: 0.6, nightMinTaxis: 0,
   },
 };
 
@@ -975,34 +975,6 @@ const CARDS = [
       "use the pre-booked stand, so the walk-up queue is not pushed back. No new cars, " +
       "no new licence, and no agreement with Shenzhen — it is a repositioning fix. " +
       "The model assumes 8 in 10 drop-offs can be matched this way.",
-  },
-  {
-    label: "More pre-booked trips, with stands",
-    icon: "car",
-    cost: { capital: 3e6, years: 10, annual: 4e5, kind: "capital" },
-    pilot: { metric: "fleet trips per hour, fleet passenger wait", weeks: 8 },
-    on: { prebookShare: 0.35, "stands.prebook": 6 },
-    off: { prebookShare: 0.1, "stands.prebook": 2 },
-    isOn: (v) => Number(v.prebookShare) > 0.2,
-    note:
-      "The five licensed fleets already have their own stopping places. Send that " +
-      "channel more passengers and give it the stands to handle them. Capacity is the " +
-      "whole point: with today's two stands, more pre-booked trips make waits 4.1 " +
-      "minutes longer. With six stands it saves 5.9 minutes.",
-  },
-  {
-    label: "Book before you arrive",
-    icon: "app",
-    cost: { capital: 1e6, years: 5, annual: 3e5, kind: "software" },
-    pilot: { metric: "share pre-registered, boarding time per taxi", weeks: 8 },
-    on: { appShare: 0.85 },
-    off: { appShare: 0 },
-    isOn: (v) => Number(v.appShare) > 0,
-    note:
-      "Passengers check in before they arrive, so boarding is quicker and the hall " +
-      "knows how many are coming. Worth about 1.3 minutes — but only after the ticket " +
-      "is fixed. On the paper ticket it does nothing: there are no taxis to board " +
-      "any faster.",
   },
   {
     label: "Two more boarding stands",
