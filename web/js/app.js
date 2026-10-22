@@ -840,15 +840,17 @@ function renderCards() {
   for (const card of CARDS) {
     const on = card.isOn(state.values);
     const se = card.effectSE;
-    // an effect smaller than twice its own standard error is noise, not a result
-    const noisy = card.effect != null && se != null && Math.abs(card.effect) < 2 * se;
+    // show the estimate; only call it zero when it is practically zero.
+    // (A 2-sigma rule hid real 1-minute effects as "noise".)
+    const tiny = card.effect != null && Math.abs(card.effect) < 0.25;
+    const unsure = card.effect != null && se != null && Math.abs(card.effect) < 2 * se;
     const eff = card.effect == null || !Number.isFinite(card.effect)
       ? "…"
-      : noisy
+      : tiny
         ? "≈ 0"
         : `${card.effect >= 0 ? "+" : ""}${card.effect.toFixed(1)} min`;
-    const zero = card.effect != null && (noisy || Math.abs(card.effect) < 0.08);
-    const bad = card.effect != null && !noisy && card.effect >= 0.08;
+    const zero = tiny;
+    const bad = card.effect != null && !tiny && card.effect >= 0.08;
     const tip = card.effect == null
       ? "computing…"
       : `average of ${card.effectN ?? 10} runs, ±${(se ?? 0).toFixed(1)} min (1 s.e.); ` +
@@ -866,7 +868,7 @@ function renderCards() {
     btn.setAttribute("aria-pressed", String(on));
     btn.innerHTML =
       `<span class="dot"></span><span class="t">${card.label}</span>` +
-      `<span class="eff${zero ? " zero" : bad ? " bad" : ""}" ` +
+      `<span class="eff${zero ? " zero" : bad ? " bad" : unsure ? " unsure" : ""}" ` +
       `title="Effect on mean wait when this policy is applied on its own, at the ` +
       `settings you have now. ${tip}">${eff}</span>`;
     btn.addEventListener("click", () => {
@@ -910,7 +912,7 @@ let effectsToken = 0;
 
 function computeEffects() {
   const token = ++effectsToken;
-  const seeds = [11, 12, 13, 14, 15, 16, 17, 18, 19, 20];   // 2 was far too noisy
+  const seeds = [11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24];
 
   const stats = (cfg) => {
     // everyone counts, including people who gave up: otherwise a policy can

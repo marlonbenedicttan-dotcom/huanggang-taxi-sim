@@ -1272,3 +1272,6 @@ html { scroll-behavior: smooth; }
   .zone-label { font-size: 11.5px; }
   .hint { font-size: 11.5px; }
 }
+
+/* an effect whose confidence interval still contains zero */
+.card .eff.unsure { opacity: 0.72; }
