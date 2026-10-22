@@ -114,11 +114,16 @@ export class PixelScene {
   /* ---------------- sizing ---------------- */
   resize() {
     const rect = this.canvas.getBoundingClientRect();
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const portraitish = rect.height > rect.width;
+    const dpr = Math.min(window.devicePixelRatio || 1, portraitish ? 1.5 : 2);
     const cw = Math.max(1, Math.round(rect.width * dpr));
     const ch = Math.max(1, Math.round(rect.height * dpr));
-    this.canvas.width = cw;
-    this.canvas.height = ch;
+    // assigning width/height reallocates the backing store; on a phone that
+    // happens on every scroll-induced resize, so only do it when it changes
+    if (this.canvas.width !== cw || this.canvas.height !== ch) {
+      this.canvas.width = cw;
+      this.canvas.height = ch;
+    }
     this.dpr = dpr;
     this.portrait = rect.height > rect.width * 1.2;
 
@@ -1096,12 +1101,30 @@ export class PixelScene {
     }
   }
 
+  /** Pre-rendered soft shadow: one drawImage instead of a path per entity. */
+  _shadowSprite() {
+    if (this._shadowCv) return this._shadowCv;
+    const c = document.createElement("canvas");
+    c.width = 32;
+    c.height = 16;
+    const g = c.getContext("2d");
+    const grd = g.createRadialGradient(16, 8, 0, 16, 8, 15);
+    grd.addColorStop(0, "rgba(32,26,20,0.34)");
+    grd.addColorStop(0.6, "rgba(32,26,20,0.16)");
+    grd.addColorStop(1, "rgba(32,26,20,0)");
+    g.fillStyle = grd;
+    g.fillRect(0, 0, 32, 16);
+    this._shadowCv = c;
+    return c;
+  }
+
   _shadow(x, y, w, alpha = 0.20) {
     const g = this.g;
-    g.fillStyle = `rgba(32,26,20,${alpha})`;
-    g.beginPath();
-    g.ellipse(Math.round(x), Math.round(y), w, Math.max(1, Math.round(w * 0.42)), 0, 0, Math.PI * 2);
-    g.fill();
+    const dw = Math.max(6, w * 2.6);
+    const dh = Math.max(3, w * 1.15);
+    g.globalAlpha = Math.min(1, alpha / 0.2);
+    g.drawImage(this._shadowSprite(), Math.round(x - dw / 2), Math.round(y - dh / 2), Math.round(dw), Math.round(dh));
+    g.globalAlpha = 1;
   }
 
   _taxi(e) {

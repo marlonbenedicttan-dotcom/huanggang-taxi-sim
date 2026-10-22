@@ -1462,7 +1462,12 @@ function init() {
     scene.resize();
     drawChart();
   };
-  window.addEventListener("resize", onResize);
+  let resizeTimer = null;
+  const debouncedResize = () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(onResize, 120);
+  };
+  window.addEventListener("resize", debouncedResize);
   window.addEventListener("orientationchange", () => setTimeout(onResize, 250));
 
   // stop burning battery when the tab is in the background
