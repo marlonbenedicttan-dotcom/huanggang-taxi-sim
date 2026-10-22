@@ -105,7 +105,7 @@ export class PixelScene {
 
     // viewport camera over the finished buffer: pan and zoom are pure blits,
     // so the world keeps its authored pixel size at every zoom level
-    this.cam = { x: W / 2, y: H / 2, zoom: 1 };
+    this.cam = this._defaultCam();
     this._bindCamera();
 
     this.resize();
@@ -204,8 +204,6 @@ export class PixelScene {
         this.vel = null;
         this._lastMove = 0;
         drag = { x: e.clientX, y: e.clientY };
-        // at the fit view there is nowhere to pan: a drag dives in instead
-        this._dive = this.cam.zoom <= 1.02 ? { x: e.clientX, y: e.clientY } : null;
         c.style.cursor = "grabbing";
       } else if (pts.size === 2) {
         const [a, b] = [...pts.values()];
@@ -234,15 +232,6 @@ export class PixelScene {
       }
 
       if (!drag) return;
-
-      if (this._dive) {
-        const far = Math.hypot(e.clientX - this._dive.x, e.clientY - this._dive.y);
-        if (far < 7) return;                    // a click, not a drag
-        this._zoomAt(e.clientX, e.clientY, 1.9, true);
-        this._dive = null;
-        drag = { x: e.clientX, y: e.clientY };
-        return;
-      }
 
       // the hand wins over any easing: finish the dive rather than freeze
       // halfway through it
@@ -277,7 +266,6 @@ export class PixelScene {
       if (pts.size < 2) pinch = null;
       if (pts.size === 0) {
         drag = null;
-        this._dive = null;
         this._dragging = false;
         this._lastMove = 0;
         c.style.cursor = "grab";
@@ -318,15 +306,26 @@ export class PixelScene {
     this._zoomAt?.(r.left + r.width / 2, r.top + r.height / 2, factor, true);
   }
 
+  /**
+   * The opening view: framed on the hall itself (not on the buffer), slightly
+   * closer than "fit" so there is room to drag without ever auto-zooming.
+   */
+  _defaultCam() {
+    return { x: X(24), y: Z(5.5), zoom: 1.25 };
+  }
+
   resetView() {
-    this.cam.zoom = 1;
-    this.cam.x = W / 2;
-    this.cam.y = H / 2;
+    this.cam = this._defaultCam();
+    this.vel = null;
+    this._anim = null;
   }
 
   _applyView() {
     const v = this.view;
     if (!v) return;
+    const key = `${v.W}x${v.H}`;
+    if (this._viewKey && this._viewKey !== key) this.resetView();
+    this._viewKey = key;
     if (W !== v.W || H !== v.H) {
       W = v.W; H = v.H;
       this.buf.width = W;
@@ -452,11 +451,24 @@ export class PixelScene {
       let e = this.people.get(id);
       if (!e) {
         const [dx, dz] = doorPos(clsId);
-        // walk out of the doors, down the aisle, then cut into the queue
+        // golden-ratio hash: continuous, so two people rarely share a line
+        const h1 = (id * 0.6180339887) % 1;
+        const h2 = (id * 0.7548776662) % 1;
+        const across = (h1 - 0.5) * 1.9;                          // fan out of the doors
+        const behind = h2 * 0.5;                                   // some are a step further back
         e = {
-          x: dx + (((id * 31) % 7) - 3) * 0.16, z: dz,
-          tx: qx, tz: qz, cls: clsId, leaving: false, wait: 0.2, seed: id,
-          path: [[dx, LANES[CLS[clsId]] - 3.4]],
+          x: dx + across,
+          z: dz + behind,
+          tx: qx, tz: qz, cls: clsId, leaving: false,
+          wait: ((id * 11) % 9) * 0.055,                         // leave in a trickle
+          speed: 1.55 + h2 * 0.85,                                // ... and spread on the way
+          seed: id,
+          // walk straight out of the doors, then fan toward their own column
+          // instead of everyone gathering on one aisle line first
+          path: [
+            [dx + across, dz + behind + 0.9],
+            [qx + (h2 - 0.5) * 0.7, LANES[CLS[clsId]] - 3.2 + (h1 - 0.5) * 0.8],
+          ],
         };
         this.people.set(id, e);
       }
@@ -560,7 +572,7 @@ export class PixelScene {
       if (d > 6) {
         e.x = e.tx; e.z = e.tz;
       } else if (d > 0.03) {
-        const sp = e.leaving ? 2.6 : 2.1;
+        const sp = e.leaving ? 2.6 : (e.speed || 2.1);
         const len = Math.min(d, sp * step);
         e.x += (dx / d) * len;
         e.z += (dz / d) * len;
@@ -611,7 +623,7 @@ export class PixelScene {
     }
 
     const buf = this.labelEls[3];
-    const [bx, bz] = bufferPos(0, 10);
+    const [bx, bz] = bufferPos(0, 5);
     const pb = this.project(bx, 1.7, bz);
     buf.innerHTML = `<b>${f.buf}</b> taxis`;
     buf.style.transform = `translate(${pb.x}px, ${pb.y}px) translate(-50%, -100%)`;
@@ -766,7 +778,7 @@ export class PixelScene {
 
       // lane name painted on the asphalt
       drawText(g, ["URBAN", "NEW TERRITORIES", "PRE-BOOKED"][id],
-        X(2), Math.round(top + h / 2) - 2, "rgba(248,244,232,0.78)", 1);
+        X(5.6), Math.round(top + h / 2) - 2, "rgba(248,244,232,0.78)", 1);
 
       // chevrons pointing to the bays
       g.fillStyle = "rgba(240,236,222,0.35)";
@@ -1038,8 +1050,8 @@ export class PixelScene {
       { kind: "planter", x: 6, z: 16 }, { kind: "planter", x: 18, z: 16 },
       { kind: "planter", x: 30, z: 16 }, { kind: "planter", x: 42, z: 16 },
       { kind: "bin", x: 12, z: 8 }, { kind: "bin", x: 24, z: 16 },
-      { kind: "bush", x: 3, z: -2.4 }, { kind: "bush", x: 25, z: -2.4 },
-      { kind: "bush", x: 36, z: -2.4 }, { kind: "bush", x: 46, z: -2.4 },
+      { kind: "planter", x: 3, z: -2.4 }, { kind: "planter", x: 25, z: -2.4 },
+      { kind: "planter", x: 36, z: -2.4 }, { kind: "planter", x: 46, z: -2.4 },
     ];
     for (const p of props) items.push({ z: p.z, kind: p.kind, prop: p });
 
