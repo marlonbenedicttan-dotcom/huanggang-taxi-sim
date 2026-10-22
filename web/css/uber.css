@@ -473,3 +473,35 @@ footer { color: #9b9b9b; border-top: 1px solid var(--line); padding-top: 10px; }
 .chart-head { color: var(--muted); }
 .chart-head b { color: #000; }
 #kpis { bottom: 150px; }
+
+/* ---------------------- phone: keep the sheet usable ---------------------- */
+@media (max-width: 820px) {
+  /* the long explanation pushed every control below the fold; keep the
+     headline, the numbers and the button, and let the full text live in
+     "How the simulation works" */
+  #recommend .steps,
+  #recommend .rec-note { display: none; }
+  #recommend { padding: 12px; }
+  #recommend .big { font-size: 14.5px; margin-bottom: 8px; }
+  .rec-table { font-size: 10.5px; }
+  body.sheet-open #panel { height: 82dvh; }
+}
+
+/* phone: compact stats so the map keeps most of the screen */
+@media (max-width: 820px) {
+  #kpis {
+    bottom: calc(168px + env(safe-area-inset-bottom));
+    gap: 6px;
+    left: 10px;
+    right: 10px;
+  }
+  .kpi { padding: 7px 9px; border-radius: 10px; }
+  .kpi-top { font-size: 9.5px; line-height: 1.2; }
+  .kpi-val { font-size: 15.5px; }
+  .kpi-val span { font-size: 9.5px; }
+  .kpi .delta { font-size: 9.5px; padding: 1px 5px; }
+  #camCtl { padding: 3px; }
+  #camCtl button { width: 32px; height: 32px; font-size: 15px; }
+  #camLvl { font-size: 9px; }
+  #stage { inset: 6px 6px 0 6px; border-radius: 14px; }
+}

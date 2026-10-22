@@ -669,6 +669,32 @@ export class PixelScene {
     }
   }
 
+  /**
+   * Everything that never changes is painted once into an offscreen layer.
+   * Redrawing the grass dither and the terminal every frame was ~60k fillRect
+   * calls, which is what made phones crawl.
+   */
+  _ensureStatic() {
+    const key = `${W}x${H}`;
+    if (this._static && this._staticKey === key) return;
+    if (!this._static) this._static = document.createElement("canvas");
+    this._static.width = W;
+    this._static.height = H;
+    const g = this._static.getContext("2d");
+    g.imageSmoothingEnabled = false;
+    const real = this.g;
+    this.g = g;
+    this._drawGrass();
+    this._drawGround();
+    this._drawLanes();
+    this._drawMarkings();
+    this._drawRoad();
+    this._drawBackdrop();
+    this._drawTerminal();
+    this.g = real;
+    this._staticKey = key;
+  }
+
   render(dt) {
     this._stepCamera(dt);
     this._applyView();          // compare view: panels have different sizes
@@ -681,13 +707,9 @@ export class PixelScene {
     const g = this.g;
     g.clearRect(0, 0, W, H);
 
-    this._drawGrass();
-    this._drawGround();
-    this._drawLanes();
-    this._drawMarkings();
-    this._drawRoad();
-    this._drawBackdrop();
-    this._drawTerminal();
+    this._ensureStatic();
+    g.drawImage(this._static, 0, 0);
+    this._drawTraffic();
     this._drawPropsAndPeople();
     this._drawWeather();
     this._drawFrame();
@@ -841,8 +863,12 @@ export class PixelScene {
     for (let x = 8; x < W; x += 26) g.fillRect(x, Math.round(top + (bot - top) / 2), 12, 1);
 
     drawText(g, "TAXI APPROACH", 12, Math.round(top + 4), "rgba(240,236,222,0.5)", 1);
+  }
 
-    // ambient traffic: a couple of taxis running the approach road
+  /** Only the moving cars on the approach road. */
+  _drawTraffic() {
+    const g = this.g;
+    const top = Z(26.2);
     const lanes = [top + 7, top + 17];
     for (let i = 0; i < 3; i++) {
       const dir = i % 2 === 0 ? 1 : -1;

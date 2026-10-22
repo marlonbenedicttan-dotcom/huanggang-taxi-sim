@@ -111,6 +111,15 @@ const POLICY_KEYS = [
   "infoShare", "nightMinTaxis",
 ];
 
+function collapseSheet() {
+  if (!IS_PHONE) return;
+  document.body.classList.remove("sheet-open");
+  const t = document.getElementById("sheetToggle");
+  if (t) t.setAttribute("aria-expanded", "false");
+  const panel = document.getElementById("panel");
+  if (panel) panel.scrollTop = 0;
+}
+
 const IS_PHONE =
   window.matchMedia("(max-width: 820px)").matches ||
   (navigator.maxTouchPoints > 1 && window.innerWidth < 1100);
@@ -913,6 +922,7 @@ function renderCards() {
         renderPilot();
         setPreset();
         run();
+        collapseSheet();
       });
 
       const why = document.createElement("button");
