@@ -511,7 +511,41 @@ const KPI = [
   { key: "bufferAvg", label: "Avg taxis waiting", unit: "", digits: 0, lowerBetter: false },
 ];
 
+function renderHero(m) {
+  const w = m.waitMeanInclAbandon;
+  const b = state.baseline ? state.baseline.waitMeanInclAbandon : null;
+  const wait = $("#heroWait");
+  if (wait) wait.textContent = Number.isFinite(w) ? w.toFixed(1) : "—";
+
+  const d = $("#heroDelta");
+  if (d) {
+    if (b && Math.abs(b) > 1e-6) {
+      const pct = Math.round(((w - b) / b) * 100);
+      d.textContent = pct === 0 ? "no change" : `${pct > 0 ? "+" : ""}${pct}%`;
+      d.className = "hero-delta " + (pct < 0 ? "good" : pct > 0 ? "bad" : "");
+    } else {
+      d.textContent = "—";
+      d.className = "hero-delta";
+    }
+  }
+
+  const sub = $("#heroSub");
+  if (sub) {
+    const ab = m.abandonRatePct;
+    sub.textContent = ab >= 1
+      ? `about 1 in ${Math.max(2, Math.round(100 / ab))} people give up`
+      : "almost nobody gives up";
+  }
+
+  const kicker = $("#heroKicker");
+  if (kicker) {
+    const p = [...document.querySelectorAll("[data-preset]")].find((b2) => b2.classList.contains("active"));
+    kicker.textContent = p ? p.textContent.trim() : "your settings";
+  }
+}
+
 function renderKpis(m, ms) {
+  renderHero(m);
   const host = $("#kpis");
   host.innerHTML = "";
   for (const k of KPI) {
@@ -781,6 +815,8 @@ function updateHud(frame) {
  * Scenario cards + A/B comparison
  * ================================================================== */
 
+let openNote = null;   // index of the card whose explanation is showing
+
 const CARDS = [
   {
     label: "Digital queue ticket",
@@ -900,7 +936,7 @@ function renderCards() {
   // around while the background calculation was running.
   if (host.children.length !== CARDS.length) {
     host.innerHTML = "";
-    CARDS.forEach((card) => {
+    CARDS.forEach((card, idx) => {
       const item = document.createElement("div");
       item.className = "card-item";
 
@@ -917,6 +953,7 @@ function renderCards() {
       btn.addEventListener("click", () => {
         const on = card.isOn(state.values);
         Object.assign(state.values, on ? card.off : card.on);
+        openNote = on ? null : idx;     // opening a policy explains it; closing hides it
         syncControls();
         paintCards();
         renderPilot();
@@ -924,28 +961,12 @@ function renderCards() {
         run();
       });
 
-      const why = document.createElement("button");
-      why.type = "button";
-      why.className = "card-q";
-      why.textContent = "?";
-      why.setAttribute("aria-expanded", "false");
-      why.setAttribute("aria-label", `What does "${card.label}" do?`);
-      why.title = "What does this do?";
-
       const note = document.createElement("p");
       note.className = "card-note";
       note.hidden = true;
       note.textContent = card.note || "";
 
-      why.addEventListener("click", (e) => {
-        e.stopPropagation();
-        const open = note.hidden;
-        note.hidden = !open;
-        why.setAttribute("aria-expanded", String(open));
-        why.classList.toggle("open", open);
-      });
-
-      row.append(btn, why);
+      row.append(btn);
       item.append(row, note);
       host.appendChild(item);
     });
@@ -967,6 +988,9 @@ function paintCards() {
 
     btn.classList.toggle("on", on);
     btn.setAttribute("aria-pressed", String(on));
+    // one target: the explanation belongs to the card you just switched on
+    const note = item.querySelector(".card-note");
+    if (note) note.hidden = !(on && openNote === i);
 
     const se = card.effectSE;
     const tiny = card.effect != null && Math.abs(card.effect) < 0.25;
@@ -1328,6 +1352,7 @@ function init() {
 
   document.querySelectorAll("[data-preset]").forEach((b) => {
     b.addEventListener("click", () => {
+      openNote = null;
       state.values = { ...PRESETS[b.dataset.preset] };
       syncControls();
       setPreset(b.dataset.preset);
@@ -1371,7 +1396,8 @@ function init() {
     setTimeout(() => window.print(), 120);
   });
 
-  $("#applyRec")?.addEventListener("click", () => {
+  $("#heroCta")?.addEventListener("click", () => {
+    openNote = null;
     state.values = { ...PRESETS.recommended };
     syncControls();
     renderCards();
