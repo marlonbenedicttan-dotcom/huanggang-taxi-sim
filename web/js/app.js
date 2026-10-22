@@ -70,6 +70,8 @@ const GROUPS = [
   {
     name: "Pickup hall",
     items: [
+      { key: "stands.prebook", label: "Pre-booked / fleet stands", min: 2, max: 12, step: 1, int: true,
+        hint: "Stands reserved for the pre-booked fleet channel. The port has a dedicated fleet stopping area; the model's default of two is the constraint that stops the channel scaling." },
       { key: "stands.nt", label: "New Territories bays", min: 1, max: 8, step: 1, int: true,
         hint: "Bays serving the New Territories queue." },
       { key: "service", label: "Boarding time per taxi", min: 0.8, max: 3.5, step: 0.1, unit: "min",
@@ -126,7 +128,7 @@ const PRESETS = {
   baseline: {
     paxPerHour: 550, urbanShare: 0.75, prebookShare: 0.1,
     taxiSupplyRatioUrban: 1.05, taxiSupplyRatioNt: 0.95, flexShare: 0,
-    "stands.urban": 8, "stands.nt": 3, service: 1.5, bufferCapacity: 40,
+    "stands.urban": 8, "stands.nt": 3, "stands.prebook": 2, service: 1.5, bufferCapacity: 40,
     dispatchIntervalMin: 1, dispatchBatch: 8, misrouteProb: 0.06,
     appShare: 0, pooledStands: false, patienceMeanMin: 35,
     backhaulMatch: 0, portSurchargeHkd: 0, waitAllowanceHkd: 0,
@@ -134,7 +136,7 @@ const PRESETS = {
   smart: {
     paxPerHour: 550, urbanShare: 0.75, prebookShare: 0.1,
     taxiSupplyRatioUrban: 1.05, taxiSupplyRatioNt: 1.05, flexShare: 0.35,
-    "stands.urban": 10, "stands.nt": 4, service: 1.5, bufferCapacity: 40,
+    "stands.urban": 10, "stands.nt": 4, "stands.prebook": 2, service: 1.5, bufferCapacity: 40,
     dispatchIntervalMin: 0, dispatchBatch: 8, misrouteProb: 0.01,
     appShare: 0.85, pooledStands: true, patienceMeanMin: 35,
     backhaulMatch: 0, portSurchargeHkd: 0, waitAllowanceHkd: 0,
@@ -382,7 +384,7 @@ function buildConfig(vals = state.values) {
     stands: {
       urban: Math.round(valueOf("stands.urban")),
       nt: Math.round(valueOf("stands.nt")),
-      prebook: 2,
+      prebook: Math.round(valueOf("stands.prebook")),
     },
     serviceMeanMin: {
       urban: valueOf("service"),
@@ -399,6 +401,7 @@ function buildConfig(vals = state.values) {
     infoShare: valueOf("infoShare"),
     nightMinTaxis: valueOf("nightMinTaxis"),
     portDwellMin: 25.5,
+    prebookStands: Math.round(valueOf("stands.prebook")),
     backhaulMatch: valueOf("backhaulMatch"),
     portSurchargeHkd: valueOf("portSurchargeHkd"),
     waitAllowanceHkd: valueOf("waitAllowanceHkd"),
@@ -772,6 +775,35 @@ const CARDS = [
       "the trade asked for in October 2026. Honest warning: it helps drivers and hurts " +
       "passengers. The cars that stay away are the ones that would have arrived just " +
       "before a queue formed.",
+  },
+  {
+    label: "Cross-boundary taxi quota",
+    cost: { capital: 0, years: 1, annual: 0, kind: "licensing" },
+    pilot: { metric: "taxis per hour arriving loaded vs empty", weeks: 12 },
+    on: { taxiSupplyRatioUrban: 1.575, taxiSupplyRatioNt: 1.425 },
+    off: { taxiSupplyRatioUrban: 1.05, taxiSupplyRatioNt: 0.95 },
+    isOn: (v) => Number(v.taxiSupplyRatioUrban) > 1.3,
+    note:
+      "License a quota of taxis to carry a passenger in *and* a passenger out, so the " +
+      "approach leg is paid instead of empty. Licensed cross-boundary vehicles already " +
+      "exist as a category; this extends the idea to the rank. In the model it is the " +
+      "single biggest lever after the ticket (-15.8 min at 1.5x supply) because it " +
+      "attacks the empty-approach problem structurally rather than paying drivers to " +
+      "tolerate it. Needs an agreement with the Mainland side.",
+  },
+  {
+    label: "Fleet channel + its own stands",
+    cost: { capital: 3e6, years: 10, annual: 4e5, kind: "capital" },
+    pilot: { metric: "fleet trips per hour, fleet passenger wait", weeks: 8 },
+    on: { prebookShare: 0.35, "stands.prebook": 6 },
+    off: { prebookShare: 0.1, "stands.prebook": 2 },
+    isOn: (v) => Number(v.prebookShare) > 0.2,
+    note:
+      "Send more passengers through the pre-booked fleet channel — the five licensed " +
+      "fleets already have dedicated stopping places at this port — and give that channel " +
+      "the stands to handle them. The capacity is the whole point: with the present two " +
+      "stands, raising the channel to 35% makes waits *worse* (+4.1 min). With six, it is " +
+      "-5.9 min.",
   },
   {
     label: "App / fleet pre-registration",
