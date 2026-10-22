@@ -181,6 +181,8 @@ export class PixelScene {
       pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
       if (pts.size === 1) {
         drag = { x: e.clientX, y: e.clientY };
+        // at the fit view there is nowhere to pan: a drag dives in instead
+        this._dive = this.cam.zoom <= 1.02 ? { x: e.clientX, y: e.clientY } : null;
         c.style.cursor = "grabbing";
       } else if (pts.size === 2) {
         const [a, b] = [...pts.values()];
@@ -209,6 +211,16 @@ export class PixelScene {
       }
 
       if (!drag) return;
+
+      if (this._dive) {
+        const far = Math.hypot(e.clientX - this._dive.x, e.clientY - this._dive.y);
+        if (far < 7) return;                    // a click, not a drag
+        this._zoomAt(e.clientX, e.clientY, 2.1);
+        this._dive = null;
+        drag = { x: e.clientX, y: e.clientY };
+        return;
+      }
+
       const rect = c.getBoundingClientRect();
       const k = this.scale * this.cam.zoom * (c.width / rect.width);
       this.cam.x -= (e.clientX - drag.x) / k;
@@ -222,6 +234,7 @@ export class PixelScene {
       if (pts.size < 2) pinch = null;
       if (pts.size === 0) {
         drag = null;
+        this._dive = null;
         c.style.cursor = "grab";
       }
     };
@@ -351,6 +364,11 @@ export class PixelScene {
   sync(frame) {
     this.metaFrame = frame;
     if (!frame) return;
+
+    // A scrubbed playhead (or the first frame) is not a moment in continuous
+    // time: entities must appear where they belong, not walk in from the door.
+    const jump = this._lastT == null || Math.abs(frame.t - this._lastT) > 0.75;
+    this._lastT = frame.t;
     const seenT = new Set();
     const seenP = new Set();
 
@@ -420,6 +438,19 @@ export class PixelScene {
         e.tx = EXIT_X + 8;
         e.tz = LANES[CLS[e.cls]];
         e.parked = false;
+      }
+    }
+
+    if (jump) {
+      for (const [, e] of this.taxis) {
+        if (e.exiting === "exit") { e.x = e.tx; continue; }
+        e.x = e.tx; e.z = e.tz; e.v = 0; e.wp = null;
+      }
+      for (const [id, e] of this.people) {
+        if (e.leaving) { this.people.delete(id); continue; }
+        e.x = e.tx; e.z = e.tz;
+        e.path = null;
+        e.wait = 0;
       }
     }
   }
