@@ -1,0 +1,18 @@
+baseline                           7.14 min
+guaranteed return fare (70%)       3.32 min   -3.82
+
+a state fleet is just extra guaranteed supply:
+  +10% taxis                     4.72 min   -2.42
+  +20% taxis                     3.81 min   -3.34
+  +30% taxis                     3.41 min   -3.73
+  +40% taxis                     3.47 min   -3.67
+
+same fleet (+30%), with private supply displaced by it:
+  displaces   0% of private supply   3.41 min   -3.73
+  displaces  10% of private supply   3.76 min   -3.38
+  displaces  20% of private supply   5.97 min   -1.17
+  displaces  30% of private supply  11.10 min   +3.96
+  displaces  50% of private supply  22.89 min   +15.75
+
+reading: the fleet only works while private drivers keep coming.
+past roughly a quarter displaced, it is worse than doing nothing.

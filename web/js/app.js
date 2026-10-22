@@ -722,65 +722,6 @@ function updateHud(frame) {
 
 const CARDS = [
   {
-    label: "Continuous dispatch",
-    on: { dispatchIntervalMin: 0 },
-    off: { dispatchIntervalMin: 1 },
-    isOn: (v) => Number(v.dispatchIntervalMin) === 0,
-    note:
-      "Release taxis the moment they arrive instead of holding them for a batch " +
-      "every minute. It removes a wait the hall creates for itself, costs nothing, " +
-      "and needs only a staffing change.",
-  },
-  {
-    label: "Pooled pickup bays",
-    on: { pooledStands: true },
-    off: { pooledStands: false },
-    isOn: (v) => !!v.pooledStands,
-    note:
-      "Any bay can serve any queue, so a quiet lane lends its space to a busy one. " +
-      "It only works if drivers are told which bay to use — otherwise they queue " +
-      "in the wrong lane.",
-  },
-  {
-    label: "App pre-registration",
-    on: { appShare: 0.85 },
-    off: { appShare: 0 },
-    isOn: (v) => Number(v.appShare) > 0,
-    note:
-      "Passengers check in on their phone before they arrive: boarding is quicker " +
-      "and the hall knows how many are coming. The biggest single win in this model, " +
-      "but it depends on passengers actually adopting the app.",
-  },
-  {
-    label: "Flexible taxis",
-    on: { flexShare: 0.35 },
-    off: { flexShare: 0 },
-    isOn: (v) => Number(v.flexShare) > 0,
-    note:
-      "Let a taxi serve either destination instead of being tied to one queue. " +
-      "Smooths the mismatch between the lanes, but needs a regulatory change and " +
-      "some drivers will refuse the longer trip.",
-  },
-  {
-    label: "Two extra bays",
-    on: { "stands.urban": 10, "stands.nt": 4 },
-    off: { "stands.urban": 8, "stands.nt": 3 },
-    isOn: (v) => Number(v["stands.urban"]) > 8 || Number(v["stands.nt"]) > 3,
-    note:
-      "Build out two more bays. It raises the ceiling on how many taxis can board " +
-      "at once, but it is capital works: slow to deliver and expensive per minute " +
-      "of wait saved.",
-  },
-  {
-    label: "Balance NT supply",
-    on: { taxiSupplyRatioNt: 1.05 },
-    off: { taxiSupplyRatioNt: 0.95 },
-    isOn: (v) => Number(v.taxiSupplyRatioNt) > 1,
-    note:
-      "Top up New Territories taxi supply until it matches demand. This is the same " +
-      "lever as the driver incentives below, applied to one lane only.",
-  },
-  {
     label: "Guaranteed return fare",
     on: { backhaulMatch: 0.7 },
     off: { backhaulMatch: 0 },
@@ -801,14 +742,44 @@ const CARDS = [
       "is regressive for short trips.",
   },
   {
-    label: "Waiting-time allowance",
-    on: { waitAllowanceHkd: 2 },
-    off: { waitAllowanceHkd: 0 },
-    isOn: (v) => Number(v.waitAllowanceHkd) > 0,
+    label: "App pre-registration",
+    on: { appShare: 0.85 },
+    off: { appShare: 0 },
+    isOn: (v) => Number(v.appShare) > 0,
     note:
-      "Pay drivers for time spent in the queue. It makes a long wait survivable, " +
-      "but the operator pays for every idle minute — the more successful it is at " +
-      "attracting taxis, the more it costs.",
+      "Passengers check in on their phone before they arrive: boarding is quicker " +
+      "and the hall knows how many are coming. The biggest software-only win, but it " +
+      "depends on passengers actually adopting the app.",
+  },
+  {
+    label: "Flexible taxis",
+    on: { flexShare: 0.35 },
+    off: { flexShare: 0 },
+    isOn: (v) => Number(v.flexShare) > 0,
+    note:
+      "Let a taxi serve either destination instead of being tied to one queue. " +
+      "Smooths the mismatch between the lanes, but needs a regulatory change and " +
+      "some drivers will refuse the longer trip.",
+  },
+  {
+    label: "Two extra bays",
+    on: { "stands.urban": 10, "stands.nt": 4 },
+    off: { "stands.urban": 8, "stands.nt": 3 },
+    isOn: (v) => Number(v["stands.urban"]) > 8 || Number(v["stands.nt"]) > 3,
+    note:
+      "Build out two more bays. It raises the ceiling on how many taxis can board " +
+      "at once, but it is capital works: slow to deliver and, at this demand, it " +
+      "buys about the same as the app does for a fraction of the cost.",
+  },
+  {
+    label: "Pooled pickup bays",
+    on: { pooledStands: true },
+    off: { pooledStands: false },
+    isOn: (v) => !!v.pooledStands,
+    note:
+      "Any bay can serve any queue, so a quiet lane lends its space to a busy one. " +
+      "The smallest of the worthwhile measures, and it only works if drivers are " +
+      "told which bay to use.",
   },
 ];
 
