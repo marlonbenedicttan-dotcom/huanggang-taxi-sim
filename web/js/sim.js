@@ -29,6 +29,7 @@ export function makeRng(seed) {
   };
 }
 
+const safeMean = (a) => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : 0);
 const expo = (rng, rate) => -Math.log(1 - rng()) / rate;
 const uniform = (rng, lo, hi) => lo + (hi - lo) * rng();
 
@@ -711,6 +712,14 @@ export class Simulation {
       partyAbandoned: this.paxAbandoned,
       abandonRatePct: (100 * this.paxAbandoned) / Math.max(measured, 1),
       waitMean: mean(this.waits),
+      // Mean wait over *everyone* who arrived, including those who gave up.
+      // waitMean only covers passengers who were served, so a policy that
+      // serves more people can look better simply because the longest waiters
+      // are now counted as abandonments. Use this one to rank policies.
+      waitMeanInclAbandon:
+        (safeMean(this.waits) * this.paxServed +
+          safeMean(this.abandonWaits) * this.paxAbandoned) /
+        Math.max(1, this.paxServed + this.paxAbandoned),
       waitMedian: pct(0.5),
       waitP90: pct(0.9),
       waitP95: pct(0.95),

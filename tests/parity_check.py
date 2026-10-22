@@ -38,6 +38,7 @@ NODE = os.path.expanduser("~/.local/node/bin/node")
 
 PAIRS = [
     ("wait_mean", "waitMean"),
+    ("wait_mean_incl_abandon", "waitMeanInclAbandon"),
     ("wait_p90", "waitP90"),
     ("abandon_rate_pct", "abandonRatePct"),
     ("queue_avg", "queueAvg"),

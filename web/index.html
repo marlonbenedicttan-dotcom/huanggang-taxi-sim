@@ -93,10 +93,16 @@
 
             <h4>What the numbers mean</h4>
             <ul>
-              <li><b>Mean wait</b> — average time from arriving at the hall to sitting in a taxi.</li>
+              <li><b>Mean wait</b> — average time from arriving at the hall to sitting in a taxi,
+                counting <i>everyone</i> who arrived: people who gave up are counted up to the moment
+                they left. Counting only the people who were served would flatter any policy that
+                pushes the longest waiters out of the statistics. (The research tables in the README
+                report the served-only mean, which is always lower.)</li>
               <li><b>90th percentile</b> — the unlucky one in ten. The tail is what people complain
                 about, and it is always worse than the average.</li>
-              <li><b>Gave up</b> — share who left before getting a taxi.</li>
+              <li><b>Gave up</b> — share who left before getting a taxi. The policy cards are
+                ranked on a mean that includes these people, precisely so a policy cannot look good
+                by pushing the longest waiters out of the statistics.</li>
               <li><b>Avg waiting</b> — how many people are in the queues at any moment.</li>
               <li><b>Avg bays busy</b> — share of the time each bay is occupied. Near 100% means the
                 bays, not the taxis, are the limit.</li>

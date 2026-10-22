@@ -431,6 +431,7 @@ function run() {
   renderCards();
   if (state.compare) updateVerdict();
   $("#playBtn").textContent = "Pause";
+  scheduleEffects();
 }
 
 /* The reference is re-run with every change, so the deltas always compare
@@ -443,7 +444,7 @@ function computeBaseline() {
  * KPI cards
  * ------------------------------------------------------------------ */
 const KPI = [
-  { key: "waitMean", label: "Mean wait", unit: "min", digits: 1, lowerBetter: true },
+  { key: "waitMeanInclAbandon", label: "Mean wait", unit: "min", digits: 1, lowerBetter: true },
   { key: "waitP90", label: "90th percentile", unit: "min", digits: 1, lowerBetter: true },
   { key: "abandonRatePct", label: "Gave up", unit: "%", digits: 1, lowerBetter: true },
   { key: "queueAvg", label: "Avg waiting", unit: "parties", digits: 0, lowerBetter: true },
@@ -838,12 +839,20 @@ function renderCards() {
 
   for (const card of CARDS) {
     const on = card.isOn(state.values);
-    const eff =
-      card.effect == null
-        ? "…"
+    const se = card.effectSE;
+    // an effect smaller than twice its own standard error is noise, not a result
+    const noisy = card.effect != null && se != null && Math.abs(card.effect) < 2 * se;
+    const eff = card.effect == null || !Number.isFinite(card.effect)
+      ? "…"
+      : noisy
+        ? "≈ 0"
         : `${card.effect >= 0 ? "+" : ""}${card.effect.toFixed(1)} min`;
-    const zero = card.effect != null && Math.abs(card.effect) < 0.08;
-    const bad = card.effect != null && card.effect >= 0.08;
+    const zero = card.effect != null && (noisy || Math.abs(card.effect) < 0.08);
+    const bad = card.effect != null && !noisy && card.effect >= 0.08;
+    const tip = card.effect == null
+      ? "computing…"
+      : `average of ${card.effectN ?? 10} runs, ±${(se ?? 0).toFixed(1)} min (1 s.e.); ` +
+        "a single run will vary more";
 
     const item = document.createElement("div");
     item.className = "card-item";
@@ -858,7 +867,8 @@ function renderCards() {
     btn.innerHTML =
       `<span class="dot"></span><span class="t">${card.label}</span>` +
       `<span class="eff${zero ? " zero" : bad ? " bad" : ""}" ` +
-      `title="effect on mean wait when applied alone (this window)">${eff}</span>`;
+      `title="Effect on mean wait when this policy is applied on its own, at the ` +
+      `settings you have now. ${tip}">${eff}</span>`;
     btn.addEventListener("click", () => {
       Object.assign(state.values, on ? card.off : card.on);
       syncControls();
@@ -896,28 +906,52 @@ function renderCards() {
 
 /** Mean wait with a card applied on its own, one card per tick so the main
  *  thread is never blocked for more than a single simulation. */
+let effectsToken = 0;
+
 function computeEffects() {
+  const token = ++effectsToken;
+  const seeds = [11, 12, 13, 14, 15, 16, 17, 18, 19, 20];   // 2 was far too noisy
+
+  const stats = (cfg) => {
+    // everyone counts, including people who gave up: otherwise a policy can
+    // "improve" mean wait by pushing the longest waiters into abandonment
+    const vals = seeds.map((s) => runSimulation(cfg, s).metrics.waitMeanInclAbandon);
+    const m = vals.reduce((a, v) => a + v, 0) / vals.length;
+    const sd = Math.sqrt(vals.reduce((a, v) => a + (v - m) ** 2, 0) / (vals.length - 1));
+    return { m, se: sd / Math.sqrt(vals.length) };
+  };
+
   let base = null;
   let i = 0;
-  const seeds = [11, 12, 13, 14, 15, 16];   // 2 was far too noisy to rank policies
-  const avg = (cfg) =>
-    seeds.reduce((a, s) => a + runSimulation(cfg, s).metrics.waitMean, 0) / seeds.length;
+  for (const c of CARDS) { c.effect = null; c.effectSE = null; }
+  renderCards();
 
   const step = () => {
+    if (token !== effectsToken) return;      // superseded by a newer scenario
     try {
       if (base === null) {
-        base = avg(buildConfig(referenceValues()));
+        base = stats(buildConfig(referenceValues()));
       } else if (i < CARDS.length) {
         const card = CARDS[i++];
-        card.effect = avg(buildConfig({ ...referenceValues(), ...card.on })) - base;
+        const st = stats(buildConfig({ ...referenceValues(), ...card.on }));
+        card.effect = st.m - base.m;
+        card.effectSE = Math.hypot(st.se, base.se);
+        card.effectN = seeds.length;
         renderCards();
       } else {
         return;
       }
     } catch {}
-    setTimeout(step, 30);
+    setTimeout(step, 25);
   };
-  setTimeout(step, 30);
+  setTimeout(step, 25);
+}
+
+/** Recompute the effect chips after the scenario settles. */
+let effectsTimer = null;
+function scheduleEffects(delay = 1100) {
+  clearTimeout(effectsTimer);
+  effectsTimer = setTimeout(computeEffects, delay);
 }
 
 /* ---------------- A/B state ---------------- */

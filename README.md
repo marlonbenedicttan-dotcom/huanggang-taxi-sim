@@ -291,6 +291,13 @@ Eight replications per row, seeds 11–18 (`results/incentive_sweep.txt`).
 Mean ± 95% confidence interval. Replications use **common random numbers**, so
 differences between rows are policy effects rather than sampling noise.
 
+Waits here are measured over **served passengers only**, which is the
+conventional definition. The website's headline KPI uses
+`wait_mean_incl_abandon` — the same mean with people who gave up counted up to
+the moment they left — because a policy that shortens the queue by driving the
+longest waiters to abandon would otherwise look better than it is. Both
+metrics are produced by both engines and compared in `tests/parity_check.py`.
+
 | Scenario | Mean wait (min) | 90th pct wait | Gave up (%) | Avg passengers waiting | Max waiting | Bay utilisation (%) | Taxis in buffer | Taxi time at port (min) | Throughput (pax/h) | Change in mean wait |
 |---|---|---|---|---|---|---|---|---|---|---|
 | Baseline (current process) | 7.7 ± 0.6 | 21.4 ± 0.6 | 3.4 ± 0.4 | 59.4 ± 4.5 | 157 ± 6 | 81.8 ± 0.4 | 37.4 ± 2.3 | 25.5 ± 1.7 | 535 ± 3 | — |
