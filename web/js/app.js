@@ -333,6 +333,7 @@ function buildControls() {
         state.values[item.key] = v;
         input.value = v;
         if (commit) num.value = show(v);
+        hideShift();
         setPreset();
         scheduleRun(commit ? 120 : 320);
       };
@@ -340,6 +341,7 @@ function buildControls() {
       input.addEventListener("input", () => {
         state.values[item.key] = Number(input.value);
         num.value = show(state.values[item.key]);
+        hideShift();
         setPreset();
         scheduleRun();
       });
@@ -392,6 +394,7 @@ function setPreset(name) {
   });
   const badge = $("#presetEdited");
   if (badge) badge.hidden = !!matched;
+  if (matched !== "recommended") ctaReset?.();
 }
 
 /* ------------------------------------------------------------------ *
@@ -485,6 +488,7 @@ function run() {
   }
   state.playing = true;
 
+  state.shownMetrics = res.metrics;
   renderKpis(res.metrics, ms);
   drawChart();
 
@@ -525,11 +529,55 @@ const KPI = [
     hint: "Empty taxis waiting for a passenger. If this is high while people still queue, the stands are the limit." },
 ];
 
+let shiftFrom = null;     // metrics as they were before a package was applied
+let shownWait = null;     // what the big number currently reads
+let pendingFlash = [];    // policy cards to flash once the package lands
+
+const REDUCED = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+function tweenNumber(el, from, to, dur = 480) {
+  const t0 = performance.now();
+  const step = (t) => {
+    const k = Math.min(1, (t - t0) / dur);
+    const e = 1 - Math.pow(1 - k, 3);
+    el.textContent = (from + (to - from) * e).toFixed(1);
+    if (k < 1) requestAnimationFrame(step);
+    else el.textContent = to.toFixed(1);
+  };
+  requestAnimationFrame(step);
+}
+
+/** "1 in 5" is easier to read than "21.4%". */
+const rate = (pct) => (pct >= 1 ? `1 in ${Math.max(2, Math.round(100 / pct))}` : "almost nobody");
+
+function hideShift() {
+  const el = $("#heroShift");
+  if (el) el.hidden = true;
+  shiftFrom = null;
+}
+
 function renderHero(m) {
   const w = m.waitMeanInclAbandon;
   const b = state.baseline ? state.baseline.waitMeanInclAbandon : null;
   const wait = $("#heroWait");
-  if (wait) wait.textContent = Number.isFinite(w) ? w.toFixed(1) : "—";
+  if (wait) {
+    const prev = shownWait;
+    shownWait = Number.isFinite(w) ? w : null;
+    if (shiftFrom && prev != null && Math.abs(prev - w) > 0.05 && !REDUCED) {
+      tweenNumber(wait, prev, w);
+    } else {
+      wait.textContent = Number.isFinite(w) ? w.toFixed(1) : "—";
+    }
+  }
+
+  const shift = $("#heroShift");
+  if (shift && shiftFrom) {
+    shift.innerHTML =
+      `Wait: <b>${shiftFrom.wait.toFixed(1)} → ${w.toFixed(1)} min</b> · ` +
+      `leaving without a taxi: <b>${rate(shiftFrom.abandon)} → ${rate(m.abandonRatePct)}</b>`;
+    shift.hidden = false;
+    shiftFrom = null;
+  }
 
   const d = $("#heroDelta");
   if (d) {
@@ -846,6 +894,7 @@ function updateHud(frame) {
  * ================================================================== */
 
 let openNote = null;   // index of the card whose explanation is showing
+let ctaReset = null;   // clears the hero button's applied state
 
 /* ---------------- undo history + saved scenario ---------------- */
 const SAVE_KEY = "hg_scenario_v1";
@@ -854,6 +903,12 @@ const history = [];
 function pushHistory() {
   history.push({ v: { ...state.values }, w: state.window });
   if (history.length > 25) history.shift();
+  paintUndo();
+}
+
+function paintUndo() {
+  const b = document.getElementById("undoBtn");
+  if (b) b.hidden = history.length === 0;
 }
 
 function undo() {
@@ -865,6 +920,7 @@ function undo() {
   syncWindowSelect();
   setPreset();
   run();
+  paintUndo();
   return true;
 }
 
@@ -1007,6 +1063,7 @@ function renderCards() {
         `<span class="eff">…</span>`;
       btn.addEventListener("click", () => {
         pushHistory();
+        hideShift();
         const on = card.isOn(state.values);
         Object.assign(state.values, on ? card.off : card.on);
         openNote = on ? null : idx;     // opening a policy explains it; closing hides it
@@ -1029,6 +1086,7 @@ function renderCards() {
   }
 
   paintCards();
+  pendingFlash = [];
 }
 
 /** Update the toggle state and effect labels without touching the DOM shape. */
@@ -1044,6 +1102,12 @@ function paintCards() {
 
     btn.classList.toggle("on", on);
     btn.setAttribute("aria-pressed", String(on));
+    if (pendingFlash.includes(i)) {
+      btn.classList.remove("flash");
+      void btn.offsetWidth;
+      btn.classList.add("flash");
+      setTimeout(() => btn.classList.remove("flash"), 900);
+    }
     // one target: the explanation belongs to the card you just switched on
     const note = item.querySelector(".card-note");
     if (note) note.hidden = !(on && openNote === i);
@@ -1442,7 +1506,11 @@ function init() {
     b.addEventListener("click", () => {
       pushHistory();
       openNote = null;
+      const before = { ...state.values };
       state.values = { ...PRESETS[b.dataset.preset] };
+      pendingFlash = CARDS.map((c, i) => (c.isOn(before) !== c.isOn(state.values) ? i : -1)).filter((i) => i >= 0);
+      const m = state.shownMetrics;
+      shiftFrom = m ? { wait: m.waitMeanInclAbandon, abandon: m.abandonRatePct } : null;
       syncControls();
       setPreset(b.dataset.preset);
       run();
@@ -1604,17 +1672,41 @@ function init() {
     if (e.key === "Escape" && helpModal && !helpModal.hidden) closeHelp();
   });
 
+  let ctaApplied = false;
+  const resetCta = () => {
+    ctaApplied = false;
+    const c = $("#heroCta");
+    if (c) { c.textContent = "Apply both fixes"; c.classList.remove("applied"); }
+  };
+  ctaReset = resetCta;
   $("#heroCta")?.addEventListener("click", () => {
+    if (ctaApplied) {
+      undo();
+      resetCta();
+      return;
+    }
     pushHistory();
     openNote = null;
+    const before = { ...state.values };
+    const m = state.shownMetrics;
+    shiftFrom = m ? { wait: m.waitMeanInclAbandon, abandon: m.abandonRatePct } : null;
     state.values = { ...PRESETS.recommended };
+    pendingFlash = CARDS.map((c, i) => (c.isOn(before) !== c.isOn(state.values) ? i : -1)).filter((i) => i >= 0);
     syncControls();
     renderCards();
     renderPilot();
     setPreset("recommended");
     run();
-    if (IS_PHONE) applySheet("peek");
+    // stay open on a phone: the sentence explaining the change sits right
+    // above the button, so closing the sheet would hide the answer
+    if (IS_PHONE && sheetState === "peek") applySheet("half");
+    ctaApplied = true;
+    const c = $("#heroCta");
+    if (c) { c.textContent = "✓ Applied — undo"; c.classList.add("applied"); }
   });
+
+  $("#undoBtn")?.addEventListener("click", () => { undo(); });
+  paintUndo();
 
   let seenTour = false;
   try { seenTour = localStorage.getItem("hg_tour_done") === "1"; } catch {}
