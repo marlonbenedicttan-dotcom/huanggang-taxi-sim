@@ -499,6 +499,7 @@ function run() {
   if (state.compare) updateVerdict();
   $("#playBtn").textContent = "Pause";
   scheduleEffects();
+  saveScenario();
 }
 
 /* The reference is re-run with every change, so the deltas always compare
@@ -830,6 +831,35 @@ function updateHud(frame) {
 
 let openNote = null;   // index of the card whose explanation is showing
 
+/* ---------------- undo history + saved scenario ---------------- */
+const SAVE_KEY = "hg_scenario_v1";
+const history = [];
+
+function pushHistory() {
+  history.push({ v: { ...state.values }, w: state.window });
+  if (history.length > 25) history.shift();
+}
+
+function undo() {
+  const h = history.pop();
+  if (!h) return false;
+  state.values = { ...h.v };
+  state.window = h.w;
+  syncControls();
+  syncWindowSelect();
+  setPreset();
+  run();
+  return true;
+}
+
+function saveScenario() {
+  try {
+    localStorage.setItem(SAVE_KEY, JSON.stringify({
+      v: state.values, w: state.window, seed: state.seed,
+    }));
+  } catch {}
+}
+
 const CARDS = [
   {
     label: "Digital queue ticket",
@@ -964,6 +994,7 @@ function renderCards() {
         `<span class="t">${card.label}</span>` +
         `<span class="eff">…</span>`;
       btn.addEventListener("click", () => {
+        pushHistory();
         const on = card.isOn(state.values);
         Object.assign(state.values, on ? card.off : card.on);
         openNote = on ? null : idx;     // opening a policy explains it; closing hides it
@@ -1397,6 +1428,7 @@ function init() {
 
   document.querySelectorAll("[data-preset]").forEach((b) => {
     b.addEventListener("click", () => {
+      pushHistory();
       openNote = null;
       state.values = { ...PRESETS[b.dataset.preset] };
       syncControls();
@@ -1486,7 +1518,19 @@ function init() {
     setTimeout(() => window.print(), 120);
   });
 
+  $("#helpBtn")?.addEventListener("click", () => {
+    if (IS_PHONE) applySheet("half");
+    setTimeout(() => {
+      const el = document.getElementById("newcomer");
+      const sc = document.getElementById("panelScroll");
+      if (el && sc) el.scrollIntoView({ block: "center", behavior: "smooth" });
+      el?.classList.add("flash");
+      setTimeout(() => el?.classList.remove("flash"), 1200);
+    }, 260);
+  });
+
   $("#heroCta")?.addEventListener("click", () => {
+    pushHistory();
     openNote = null;
     state.values = { ...PRESETS.recommended };
     syncControls();
@@ -1571,10 +1615,34 @@ function init() {
     }
   });
   $("#seedBtn").addEventListener("click", () => {
+    pushHistory();
     state.seed = 1 + Math.floor(Math.random() * 9999);
     $("#seedOut").textContent = String(state.seed);
     run();
   });
+
+  window.addEventListener("keydown", (e) => {
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z" && !e.shiftKey) {
+      if (e.target.matches("input, select, textarea")) return;
+      e.preventDefault();
+      undo();
+    }
+  });
+
+  // restore the last scenario unless a link or preset asked for something else
+  const params0 = new URLSearchParams(location.search);
+  if (!params0.get("s") && !params0.get("preset") && !params0.get("pax")) {
+    try {
+      const saved = JSON.parse(localStorage.getItem(SAVE_KEY) || "null");
+      if (saved && saved.v) {
+        state.values = { ...DEFAULTS, ...saved.v };
+        if (Number.isInteger(saved.w) && saved.w >= 0 && saved.w < WINDOWS.length) state.window = saved.w;
+        if (saved.seed) state.seed = saved.seed;
+        syncControls();
+        syncWindowSelect();
+      }
+    } catch {}
+  }
 
   const onResize = () => {
     scene.resize();
