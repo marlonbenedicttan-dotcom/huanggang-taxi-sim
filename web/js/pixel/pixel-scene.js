@@ -125,7 +125,10 @@ export class PixelScene {
       this.canvas.height = ch;
     }
     this.dpr = dpr;
-    this.portrait = rect.height > rect.width * 1.2;
+    // the framing follows the layout breakpoint, not the canvas aspect: on a
+    // phone the stage is deliberately short, and an aspect test made it pick
+    // the landscape buffer and letterbox it
+    this.portrait = window.matchMedia("(max-width: 820px)").matches;
 
     // a tall screen gets its own framing: a narrower slice of the hall and a
     // more top-down ground, so the scene fills the panel instead of sitting in
@@ -341,9 +344,7 @@ export class PixelScene {
     U = v.U; V = v.V; OX = v.OX; OY = v.OY;
     this.scale = Math.min(this.canvas.width / W, this.canvas.height / H);
     this.offX = Math.round((this.canvas.width - W * this.scale) / 2);
-    this.offY = this.portrait
-      ? Math.round(48 * (this.dpr || 1))
-      : Math.round((this.canvas.height - H * this.scale) / 2);
+    this.offY = Math.round((this.canvas.height - H * this.scale) / 2);
   }
 
   setQuality(q) {

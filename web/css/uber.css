@@ -734,3 +734,14 @@ footer { color: #9b9b9b; border-top: 1px solid var(--line); padding-top: 10px; }
   0% { background-position: 100% 0; }
   100% { background-position: 0 0; }
 }
+
+/* ------------------ phone: map box matches the artwork ------------------ */
+@media (max-width: 820px) {
+  /* the portrait buffer is 420x520; giving the stage that aspect removes the
+     empty band above and below the scene that read as a squashed animation */
+  #stage {
+    inset: 6px 6px auto 6px;
+    height: calc((100vw - 12px) * 520 / 420);
+    border-radius: 14px;
+  }
+}
