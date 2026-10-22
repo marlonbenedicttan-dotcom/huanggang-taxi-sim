@@ -132,6 +132,7 @@ const PRESETS = {
     dispatchIntervalMin: 1, dispatchBatch: 8, misrouteProb: 0.06,
     appShare: 0, pooledStands: false, patienceMeanMin: 35,
     backhaulMatch: 0, portSurchargeHkd: 0, waitAllowanceHkd: 0,
+    ticketDelayMin: 8, infoShare: 0, nightMinTaxis: 0,
   },
   smart: {
     paxPerHour: 550, urbanShare: 0.75, prebookShare: 0.1,
@@ -140,6 +141,7 @@ const PRESETS = {
     dispatchIntervalMin: 0, dispatchBatch: 8, misrouteProb: 0.01,
     appShare: 0.85, pooledStands: true, patienceMeanMin: 35,
     backhaulMatch: 0, portSurchargeHkd: 0, waitAllowanceHkd: 0,
+    ticketDelayMin: 8, infoShare: 0, nightMinTaxis: 0,
   },
 };
 
@@ -258,7 +260,7 @@ function buildControls() {
         btn.addEventListener("click", () => {
           state.values[item.key] = !valueOf(item.key);
           paint();
-          setPreset(null);
+          setPreset();
           if (item.key === "highQuality") {
             scene.setQuality(state.values.highQuality ? "high" : "low");
           }
@@ -311,14 +313,14 @@ function buildControls() {
         state.values[item.key] = v;
         input.value = v;
         if (commit) num.value = show(v);
-        setPreset(null);
+        setPreset();
         scheduleRun(commit ? 120 : 320);
       };
 
       input.addEventListener("input", () => {
         state.values[item.key] = Number(input.value);
         num.value = show(state.values[item.key]);
-        setPreset(null);
+        setPreset();
         scheduleRun();
       });
 
@@ -357,10 +359,19 @@ function syncControls() {
   }
 }
 
+function matchesPreset(key) {
+  const p = PRESETS[key];
+  if (!p) return false;
+  return Object.keys(p).every((k) => String(state.values[k]) === String(p[k]));
+}
+
 function setPreset(name) {
+  const matched = name != null ? name : matchesPreset("smart") ? "smart" : matchesPreset("baseline") ? "baseline" : null;
   document.querySelectorAll("[data-preset]").forEach((b) => {
-    b.classList.toggle("active", b.dataset.preset === name);
+    b.classList.toggle("active", b.dataset.preset === matched);
   });
+  const badge = $("#presetEdited");
+  if (badge) badge.hidden = !!matched;
 }
 
 /* ------------------------------------------------------------------ *
@@ -889,14 +900,14 @@ function renderCards() {
     btn.innerHTML =
       `<span class="dot"></span><span class="t">${card.label}</span>` +
       `<span class="eff${zero ? " zero" : bad ? " bad" : unsure ? " unsure" : ""}" ` +
-      `title="Effect on mean wait when this policy is applied on its own, at the ` +
-      `settings you have now. ${tip}">${eff}</span>`;
+      `title="Effect of switching this policy on or off with the rest of your ` +
+      `settings as they are. ${tip}">${eff}</span>`;
     btn.addEventListener("click", () => {
       Object.assign(state.values, on ? card.off : card.on);
       syncControls();
       renderCards();
       renderPilot();
-      setPreset(null);
+      setPreset();
       run();
     });
 
@@ -933,7 +944,7 @@ let effectsToken = 0;
 
 function computeEffects() {
   const token = ++effectsToken;
-  const seeds = [11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24];
+  const seeds = [11, 12, 13, 14, 15, 16, 17, 18, 19, 20];
 
   const stats = (cfg) => {
     // everyone counts, including people who gave up: otherwise a policy can
@@ -944,21 +955,22 @@ function computeEffects() {
     return { m, se: sd / Math.sqrt(vals.length) };
   };
 
-  let base = null;
   let i = 0;
   for (const c of CARDS) { c.effect = null; c.effectSE = null; }
   renderCards();
 
+  // Each card is measured by switching *it* on and off with everything else
+  // left as the user has it. Measuring against a clean baseline made every
+  // capacity policy read ≈0 while the paper ticket was starving the hall.
   const step = () => {
     if (token !== effectsToken) return;      // superseded by a newer scenario
     try {
-      if (base === null) {
-        base = stats(buildConfig(referenceValues()));
-      } else if (i < CARDS.length) {
+      if (i < CARDS.length) {
         const card = CARDS[i++];
-        const st = stats(buildConfig({ ...referenceValues(), ...card.on }));
-        card.effect = st.m - base.m;
-        card.effectSE = Math.hypot(st.se, base.se);
+        const on = stats(buildConfig({ ...state.values, ...card.on }));
+        const off = stats(buildConfig({ ...state.values, ...card.off }));
+        card.effect = on.m - off.m;
+        card.effectSE = Math.hypot(on.se, off.se);
         card.effectN = seeds.length;
         renderCards();
         renderPilot();
@@ -1306,8 +1318,10 @@ function init() {
     (qq.get("tour") !== "0" && !seenTour && qq.get("compare") !== "1" && !qq.get("s"));
   if (tourWanted) {
     setTimeout(startTour, 400);
+  } else if (window.requestIdleCallback) {
+    requestIdleCallback(() => computeEffects(), { timeout: 2500 });
   } else {
-    setTimeout(computeEffects, 400);
+    setTimeout(computeEffects, 1200);
   }
 
   // Esc dismisses the tour at any point

@@ -40,9 +40,45 @@
         <div class="presets">
           <button data-preset="baseline" class="active">Current process</button>
           <button data-preset="smart">Smart dispatch</button>
+          <span id="presetEdited" class="preset-edited" hidden>edited</span>
         </div>
 
+        <section id="recommend" aria-label="What the model recommends">
+          <h2>What should be done first?</h2>
+          <p class="big">Fix the queue ticket. Average wait falls from <b>20 minutes</b> to <b>9</b>.</p>
+          <ol class="steps">
+            <li><b>Fix the ticket first.</b> Phone or number-plate check-in instead of a paper
+              ticket at the buffer. Drivers stop losing eight minutes a trip, so more of them
+              come. Software money, about HK$2m — and the trade is already asking for it.</li>
+            <li><b>Then push for a cross-boundary quota.</b> Licensed taxis carry someone in
+              <i>and</i> someone out, so the drive to the port is paid instead of empty. The
+              biggest win, but it needs an agreement with Shenzhen.</li>
+            <li><b>Only grow the pre-booked lane if you build stands for it.</b> With two
+              stands, sending more people there makes the queue longer, not shorter.</li>
+          </ol>
+
+          <table class="rec-table">
+            <thead><tr><th>If you…</th><th>Wait</th><th>Give up</th></tr></thead>
+            <tbody>
+              <tr><td>do nothing</td><td>20 min</td><td>1 in 5</td></tr>
+              <tr><td>fix the ticket</td><td>9 min</td><td>1 in 30</td></tr>
+              <tr><td>ticket + quota</td><td>3 min</td><td>almost none</td></tr>
+              <tr><td>all three</td><td>12 sec</td><td>none — but now taxis queue</td></tr>
+            </tbody>
+          </table>
+
+          <p class="rec-note">
+            Doing everything is not the goal: at 12 seconds the taxis are queueing, which costs
+            drivers money and they stop coming.
+          </p>
+        </section>
+
         <div id="policyCards" class="cards"></div>
+        <p class="cards-note">
+          Effects show what switching a policy on or off does <b>with your other settings
+          as they are</b> — so they change as you go. Some policies do nothing until the
+          ticket is fixed: switch it on and watch them move.
+        </p>
         <div id="controls" class="controls"></div>
 
         <div class="runbar">
