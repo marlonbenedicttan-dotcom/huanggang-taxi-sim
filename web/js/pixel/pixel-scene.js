@@ -616,7 +616,10 @@ export class PixelScene {
       const [wx, wz] = this._queueSlot(c, Math.min(6, Math.max(0, f.q[c] - 1)));
       const p = this.project(wx, 1.7, wz);
       const n = f.q[c];
-      el.classList.toggle("hidden", n === 0 || !inView(wx, wz));
+      // a pill whose anchor is near the edge would hang off the stage
+      const w = this.canvas.parentElement?.clientWidth || W;
+      const nearEdge = p.x < 40 || p.x > w - 40;
+      el.classList.toggle("hidden", n === 0 || !inView(wx, wz) || nearEdge);
       el.classList.toggle("worst", c === worst && n > 6);
       el.innerHTML = `<b>${n}</b> waiting`;
       el.style.transform = `translate(${p.x}px, ${p.y}px) translate(-50%, -100%)`;

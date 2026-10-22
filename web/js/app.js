@@ -775,6 +775,7 @@ function updateHud(frame) {
 const CARDS = [
   {
     label: "Digital queue ticket",
+    icon: "ticket",
     cost: { capital: 2e6, years: 5, annual: 2e5, kind: "software" },
     pilot: { metric: "ticket-to-stand time, empty taxis per hour", weeks: 3 },
     on: { ticketDelayMin: 1.5 },
@@ -789,6 +790,7 @@ const CARDS = [
   },
   {
     label: "Real-time queue information",
+    icon: "info",
     cost: { capital: 1.5e6, years: 5, annual: 1e5, kind: "software" },
     pilot: { metric: "taxi arrivals when the queue is short vs long", weeks: 6 },
     on: { infoShare: 0.6 },
@@ -802,6 +804,7 @@ const CARDS = [
   },
   {
     label: "Cross-boundary taxi quota",
+    icon: "route",
     cost: { capital: 0, years: 1, annual: 0, kind: "licensing" },
     pilot: { metric: "taxis per hour arriving loaded vs empty", weeks: 12 },
     on: { taxiSupplyRatioUrban: 1.575, taxiSupplyRatioNt: 1.425 },
@@ -817,6 +820,7 @@ const CARDS = [
   },
   {
     label: "Fleet channel + its own stands",
+    icon: "car",
     cost: { capital: 3e6, years: 10, annual: 4e5, kind: "capital" },
     pilot: { metric: "fleet trips per hour, fleet passenger wait", weeks: 8 },
     on: { prebookShare: 0.35, "stands.prebook": 6 },
@@ -831,6 +835,7 @@ const CARDS = [
   },
   {
     label: "App / fleet pre-registration",
+    icon: "app",
     cost: { capital: 1e6, years: 5, annual: 3e5, kind: "software" },
     pilot: { metric: "share pre-registered, boarding time per taxi", weeks: 8 },
     on: { appShare: 0.85 },
@@ -844,6 +849,7 @@ const CARDS = [
   },
   {
     label: "Two extra stands",
+    icon: "stand",
     cost: { capital: 8e6, years: 20, annual: 1e6, kind: "capital" },
     pilot: { metric: null, weeks: null },
     on: { "stands.urban": 10, "stands.nt": 4 },
@@ -896,7 +902,8 @@ function renderCards() {
       btn.type = "button";
       btn.className = "card";
       btn.innerHTML =
-        `<span class="dot"></span><span class="t">${card.label}</span>` +
+        `<span class="ic-tile"><svg class="ic" aria-hidden="true"><use href="#i-${card.icon || "info"}"></use></svg></span>` +
+        `<span class="t">${card.label}</span>` +
         `<span class="eff">…</span>`;
       btn.addEventListener("click", () => {
         const on = card.isOn(state.values);
