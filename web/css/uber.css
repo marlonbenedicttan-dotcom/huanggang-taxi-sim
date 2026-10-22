@@ -542,3 +542,54 @@ footer { color: #9b9b9b; border-top: 1px solid var(--line); padding-top: 10px; }
   body.sheet-open .sheet-handle .hint-close { display: inline; }
   .sheet-handle { gap: 7px; }
 }
+
+/* ------------------- phone: one top row, everything on it ------------------- */
+@media (max-width: 820px) {
+  /* left: clock + the three counters, right: pause + window */
+  #hud {
+    top: calc(10px + env(safe-area-inset-top));
+    left: 10px;
+    gap: 6px;
+  }
+  #clock { font-size: 13px; font-weight: 700; }
+  #counts { gap: 3px; }
+  .chip { font-size: 10px; padding: 2px 5px; gap: 3px; }
+  .chip i { width: 5px; height: 5px; }
+
+  .overlay-top {
+    top: calc(10px + env(safe-area-inset-top));
+    right: 8px;
+    left: auto;
+  }
+  .playback { padding: 2px; gap: 2px; border-radius: 9px; }
+  .playback button,
+  .playback select {
+    height: 26px;
+    min-height: 26px;
+    padding: 0 6px;
+    font-size: 10px;
+    border-radius: 6px;
+  }
+  .playback select { max-width: 30vw; }
+}
+
+/* the ID rules from the earlier sizing pass outrank class selectors, so the
+   compact bar has to name them directly */
+@media (max-width: 820px) {
+  #playBtn,
+  #windowSel {
+    height: 28px;
+    min-height: 28px;
+    padding: 0 7px;
+    font-size: 10.5px;
+  }
+  #hud { top: calc(14px + env(safe-area-inset-top)); }
+
+  /* the sticky handle reads as a bar, so content sliding under it never
+     looks like it has merged with the hint */
+  body.sheet-open .sheet-handle {
+    border-bottom: 1px solid var(--line);
+    box-shadow: 0 6px 14px rgba(0, 0, 0, 0.05);
+    height: 38px;
+  }
+}
