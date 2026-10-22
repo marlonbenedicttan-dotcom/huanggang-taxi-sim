@@ -28,7 +28,7 @@ let OX = 16;
 let OY = 118;   // screen y of z = 0
 
 const LANDSCAPE = { W: 640, H: 360, U: 12.6, V: 6.9, OX: 16, OY: 118 };
-const PORTRAIT = { W: 640, H: 520, U: 12.0, V: 10.5, OX: 36, OY: 150 };
+const PORTRAIT = { W: 640, H: 520, U: 12.0, V: 10.5, OX: 36, OY: 102 };
 
 // The apron, lanes and terminal are drawn wider than the visible world so the
 // frame never shows the edge of the building against bare grass.
@@ -138,10 +138,9 @@ export class PixelScene {
     // fit the 16:9 buffer, letterboxing with grass so the frame never jumps
     this.scale = Math.min(cw / W, ch / H);
     this.offX = Math.round((cw - W * this.scale) / 2);
-    // portrait: anchor to the top so the spare height falls behind the sheet
-    this.offY = this.portrait
-      ? Math.round(48 * dpr)
-      : Math.round((ch - H * this.scale) / 2);
+    // centre both orientations: the portrait buffer is sized to the stage, so
+    // shifting it down by 48px used to cut the near edge of the hall away
+    this.offY = Math.round((ch - H * this.scale) / 2);
     this.ctx.imageSmoothingEnabled = false;
   }
 

@@ -40,9 +40,13 @@
         <button id="sheetToggle" class="sheet-handle" aria-expanded="false"
                 aria-label="Show controls">
           <span class="bar"></span>
-          <em class="hint-open">Tap to open settings</em>
-          <em class="hint-close">Tap to close</em>
+          <em class="hint-open">Swipe up for settings</em>
+          <em class="hint-close">Swipe down to close</em>
         </button>
+        <div id="peekStatus" hidden>
+          <b id="peekWait">20.8</b><span>min average wait</span>
+          <i id="peekSub">about 1 in 5 leave without a taxi</i>
+        </div>
         <div id="panelScroll">
         <header class="brand">
           <svg class="logo" viewBox="0 0 40 40" aria-hidden="true">
@@ -61,13 +65,12 @@
         </header>
 
         <div class="presets">
-          <button data-preset="baseline" class="active">Current process</button>
-          <button data-preset="smart">Smart dispatch</button>
-          <button data-preset="recommended" class="preset-rec">
-            ★ Recommended package
-          </button>
-          <span id="presetEdited" class="preset-edited" hidden>edited</span>
+          <button data-preset="baseline" class="active">As it runs today</button>
+          <button data-preset="smart">Everything on</button>
+          <button data-preset="recommended" class="preset-rec">★ Recommended</button>
+          <span id="presetEdited" class="preset-edited" hidden>modified</span>
         </div>
+        <p class="preset-note">A package is just a shortcut — you can change anything afterwards.</p>
 
         <section id="hero" aria-label="Where the hall stands">
           <div class="hero-top">
@@ -77,7 +80,6 @@
           <div class="hero-num"><b id="heroWait">20.8</b><span>min average wait</span></div>
           <p id="heroSub" class="hero-sub">about 1 in 5 people give up</p>
           <button id="heroCta" class="hero-cta">Apply the recommended fix</button>
-          <button id="helpBtn" class="hero-help">New here? 30-second guide</button>
 
           <details id="why">
             <summary>Why that is the recommendation</summary>
@@ -171,31 +173,6 @@
           </div>
         </details>
 
-        <details id="newcomer">
-          <summary>New here? Start with this</summary>
-          <div class="newcomer-body">
-          <p>
-            This page is a simulation of the taxi hall at Huanggang Port. It runs a
-            whole day in a few milliseconds. Change a slider or switch on a policy and
-            the hall re-runs — the people, the taxis and the numbers all update.
-          </p>
-          <ul>
-            <li><b>The big number</b> is how long the average person waits for a taxi.
-              Under it: how many people give up before one arrives.</li>
-            <li><b>Red taxis</b> go to Hong Kong Island and Kowloon, <b>green taxis</b> to
-              the New Territories, <b>blue</b> are pre-booked. Each has its own queue.</li>
-            <li><b>The policy cards</b> are measures a government could try. Tap one to
-              switch it on; the change in waiting time appears next to it.</li>
-            <li><b>Some policies only work once others are fixed.</b> Extra stands do
-              nothing while the hall is short of taxis — switch the ticket off paper
-              first and watch them move.</li>
-            <li><b>Run</b> replays the day. <b>Compare</b> puts two settings side by side.</li>
-          </ul>
-          <p class="newcomer-foot">
-            Everything is explained in more depth in “How the simulation works” below.
-          </p>
-          </div>
-        </details>
 
         <details id="howItWorks">
           <summary>How the simulation works</summary>
@@ -363,6 +340,8 @@
         </div>
 
         <div class="overlay-top">
+          <button id="helpBtn" class="help-btn" aria-label="New here? Open the guide"
+                  title="New here? Start here">?</button>
           <div class="playback">
             <button id="playBtn">Pause</button>
             <select id="windowSel" aria-label="Time window"></select>
@@ -404,6 +383,42 @@
           <canvas id="chart"></canvas>
         </div>
       </main>
+    </div>
+
+
+    <div id="helpModal" class="help-modal" hidden>
+      <div class="help-scrim" data-help-close></div>
+      <div class="help-card" role="dialog" aria-modal="true" aria-labelledby="helpTitle">
+        <div class="help-head">
+          <h2 id="helpTitle">New here? Start here</h2>
+          <button class="help-x" data-help-close aria-label="Close the guide">Close</button>
+        </div>
+        <div class="help-body">
+          <p class="help-lede">
+            This is a simulation of the taxi hall at Huanggang Port. It plays a whole day in
+            a few milliseconds — change anything and the day re-runs.
+          </p>
+          <ul>
+            <li><b>The big number</b> is how long the average person waits for a taxi.
+              Under it: how many people leave without one.</li>
+            <li><b>Three colours, three queues.</b> Red taxis go to Hong Kong Island and
+              Kowloon, green taxis to the New Territories, blue ones are pre-booked.
+              Each has its own queue.</li>
+            <li><b>The cards are policies.</b> Tap one to switch it on. The change in
+              waiting time appears on the card.</li>
+            <li><b>Some policies only work together.</b> Extra stands do nothing while the
+              hall is short of taxis — switch the paper ticket off first and watch them move.</li>
+            <li><b>Run</b> replays the day. <b>Compare</b> puts two settings side by side.</li>
+          </ul>
+          <p class="help-try">
+            <b>Try this first:</b> tap <b>★ Recommended</b>, then look at the big number.
+          </p>
+          <p class="help-foot">
+            The full explanation is in “How the simulation works”, at the bottom of the
+            settings panel.
+          </p>
+        </div>
+      </div>
     </div>
 
     <div id="tour" hidden>

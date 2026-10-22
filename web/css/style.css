@@ -1206,7 +1206,7 @@ main { background: var(--bg); }
   transition: transform 0.15s;
 }
 #howItWorks[open] > summary::before { transform: rotate(90deg); }
-#howItWorks > summary:hover { color: #fff; }
+@media (hover: hover) { #howItWorks > summary:hover { color: #000; } }
 .how {
   padding: 2px 12px 14px;
   font: 400 12px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -1242,11 +1242,11 @@ main { background: var(--bg); }
 /* ---------------------- motion: everything eases ---------------------- */
 html { scroll-behavior: smooth; }
 @keyframes reveal {
-  from { opacity: 0; transform: translateY(-5px); }
-  to   { opacity: 1; transform: none; }
+  from { transform: translateY(-5px); }
+  to   { transform: none; }
 }
-#howItWorks[open] > .how { animation: reveal 0.24s ease both; }
-.card-note:not([hidden]) { animation: reveal 0.18s ease both; }
+#howItWorks[open] > .how { animation: reveal 0.24s ease; }
+.card-note:not([hidden]) { animation: reveal 0.18s ease; }
 #panel, .controls { scroll-behavior: smooth; }
 
 /* ------------------------- phone sizing pass ------------------------- */
@@ -1338,7 +1338,7 @@ html { scroll-behavior: smooth; }
   transition: transform 0.15s;
 }
 #valuePanel[open] > summary::before { transform: rotate(90deg); }
-#valuePanel[open] > .value { animation: reveal 0.24s ease both; }
+#valuePanel[open] > .value { animation: reveal 0.24s ease; }
 .value { padding: 2px 12px 14px; font: 400 11.5px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #6f6354; }
 .value .lede { margin: 6px 0 10px; color: var(--text); }
 .value table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
@@ -1365,7 +1365,7 @@ html { scroll-behavior: smooth; }
 #pilotPanel > summary::-webkit-details-marker { display: none; }
 #pilotPanel > summary::before { content: "›"; font-size: 15px; color: #8fa3bd; transition: transform 0.15s; }
 #pilotPanel[open] > summary::before { transform: rotate(90deg); }
-#pilotPanel[open] > .value { animation: reveal 0.24s ease both; }
+#pilotPanel[open] > .value { animation: reveal 0.24s ease; }
 
 /* printable summary */
 @media print {

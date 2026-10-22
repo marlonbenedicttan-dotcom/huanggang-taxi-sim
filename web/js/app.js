@@ -25,7 +25,7 @@ const GROUPS = [
         hint: "Empty urban taxis entering the buffer, relative to passenger demand. 1.0 means supply matches demand on average." },
       { key: "taxiSupplyRatioNt", label: "NT (green) taxis arriving", min: 0.7, max: 1.4, step: 0.05, unit: "× demand",
         hint: "Same for New Territories taxis. Below 1.0 the NT lane is structurally short of taxis." },
-      { key: "stands.urban", label: "Urban pickup bays", min: 3, max: 14, step: 1, int: true,
+      { key: "stands.urban", label: "Urban boarding stands", min: 3, max: 14, step: 1, int: true,
         hint: "Physical bays serving the urban queue. Each bay boards roughly one taxi every 1.5 minutes." },
     ],
   },
@@ -41,44 +41,44 @@ const GROUPS = [
   {
     name: "Taxi mix",
     items: [
-      { key: "flexShare", label: "Red taxis that may serve the NT queue", min: 0, max: 0.6, step: 0.05, pct: true,
+      { key: "flexShare", label: "Urban taxis that can take NT fares", min: 0, max: 0.6, step: 0.05, pct: true,
         hint: "Share of urban (red) taxis allowed to take a New Territories fare. Red taxis may go anywhere, so this needs no law change; green taxis stay NT-only." },
     ],
   },
   {
     name: "Queue management",
     items: [
-      { key: "ticketDelayMin", label: "Queue-ticket delay per taxi", min: 0, max: 10, step: 0.5, unit: "min",
+      { key: "ticketDelayMin", label: "Time lost picking up a ticket", min: 0, max: 10, step: 0.5, unit: "min",
         hint: "Time a driver loses collecting a ticket at the buffer before reaching the rank. The paper system at the new port costs about 8 minutes per trip; a digital ticket should cost about 1.5." },
       { key: "infoShare", label: "Drivers who check live demand", min: 0, max: 1, step: 0.05, pct: true,
         hint: "Share of drivers who see real-time passenger numbers before setting off, and stay away when the hall is quiet. The taxi trade asked for this. It saves drivers time but can remove supply exactly when a queue is growing." },
-      { key: "nightMinTaxis", label: "Overnight minimum taxis per lane", min: 0, max: 24, step: 1, unit: "per hour",
+      { key: "nightMinTaxis", label: "Taxis guaranteed overnight", min: 0, max: 24, step: 1, unit: "per hour",
         hint: "Contracted cars guaranteed between midnight and 06:00, when no one wants to come. Only matters in the 24-hour window." },
     ],
   },
   {
     name: "Driver incentives",
     items: [
-      { key: "backhaulMatch", label: "Port trips with a matched return fare", min: 0, max: 1, step: 0.05, pct: true,
+      { key: "backhaulMatch", label: "Trips with a guaranteed ride back", min: 0, max: 1, step: 0.05, pct: true,
         hint: "Share of port pickups where a return passenger is matched before the taxi arrives. Removes the fear of an empty drive back — the reason many drivers skip the port." },
-      { key: "portSurchargeHkd", label: "Extra fare on a port pickup", min: 0, max: 50, step: 5, unit: "HKD",
+      { key: "portSurchargeHkd", label: "Extra charge on trips from the port", min: 0, max: 50, step: 5, unit: "HKD",
         hint: "A regulated surcharge added to fares leaving the port. Raises what the trip is worth, so more drivers come. The cost lands on the passenger." },
-      { key: "waitAllowanceHkd", label: "Paid per minute in the queue", min: 0, max: 4, step: 0.5, unit: "HKD/min",
+      { key: "waitAllowanceHkd", label: "Paid for each minute waiting", min: 0, max: 4, step: 0.5, unit: "HKD/min",
         hint: "Compensation for time spent waiting at the port. Makes a long queue survivable, but the operator pays for every idle minute." },
     ],
   },
   {
     name: "Pickup hall",
     items: [
-      { key: "stands.prebook", label: "Pre-booked / fleet stands", min: 2, max: 12, step: 1, int: true,
+      { key: "stands.prebook", label: "Pre-booked stands", min: 2, max: 12, step: 1, int: true,
         hint: "Stands reserved for the pre-booked fleet channel. The port has a dedicated fleet stopping area; the model's default of two is the constraint that stops the channel scaling." },
-      { key: "stands.nt", label: "New Territories bays", min: 1, max: 8, step: 1, int: true,
+      { key: "stands.nt", label: "New Territories stands", min: 1, max: 8, step: 1, int: true,
         hint: "Bays serving the New Territories queue." },
       { key: "service", label: "Boarding time per taxi", min: 0.8, max: 3.5, step: 0.1, unit: "min",
         hint: "Registration, luggage and payment. Stopwatch ~50 boardings; app pre-registration shortens it by 25%." },
-      { key: "bufferCapacity", label: "Waiting spaces per lane", min: 10, max: 60, step: 5, int: true,
+      { key: "bufferCapacity", label: "Taxis that can wait per queue", min: 10, max: 60, step: 5, int: true,
         hint: "How many empty taxis each lane can hold. When full, taxis circle and come back later." },
-      { key: "dispatchBatch", label: "Taxis per release", min: 2, max: 14, step: 1, int: true,
+      { key: "dispatchBatch", label: "Taxis released at a time", min: 2, max: 14, step: 1, int: true,
         hint: "Taxis waved forward each time staff release a platoon." },
     ],
   },
@@ -89,7 +89,7 @@ const GROUPS = [
         zeroLabel: "continuous", hint: "The manual dispatch cycle. Zero means taxis are released the moment they arrive." },
       { key: "misrouteProb", label: "Taxis sent to the wrong queue", min: 0, max: 0.2, step: 0.01, pct: true,
         hint: "Share of taxis that take the wrong lane and must circle back." },
-      { key: "appShare", label: "Passengers pre-registered", min: 0, max: 1, step: 0.05, pct: true,
+      { key: "appShare", label: "Passengers checked in ahead", min: 0, max: 1, step: 0.05, pct: true,
         hint: "Share whose details are already in the system, which shortens boarding." },
       { key: "patienceMeanMin", label: "How long people wait before leaving", min: 10, max: 80, step: 5, unit: "min",
         hint: "Average tolerance before a passenger gives up and leaves the queue." },
@@ -512,12 +512,17 @@ function computeBaseline() {
  * KPI cards
  * ------------------------------------------------------------------ */
 const KPI = [
-  { key: "waitMeanInclAbandon", label: "Mean wait", unit: "min", digits: 1, lowerBetter: true },
-  { key: "waitP90", label: "90th percentile", unit: "min", digits: 1, lowerBetter: true },
-  { key: "abandonRatePct", label: "Gave up", unit: "%", digits: 1, lowerBetter: true },
-  { key: "queueAvg", label: "Avg waiting", unit: "parties", digits: 0, lowerBetter: true },
-  { key: "standUtilPct", label: "Avg bays busy", unit: "%", digits: 0, lowerBetter: false },
-  { key: "bufferAvg", label: "Avg taxis waiting", unit: "", digits: 0, lowerBetter: false },
+  { key: "waitMeanInclAbandon", label: "Average wait", unit: "min", digits: 1, lowerBetter: true },
+  { key: "waitP90", label: "Longest waits", unit: "min", digits: 1, lowerBetter: true,
+    hint: "1 in 10 people wait longer than this. It is the bad-day number." },
+  { key: "abandonRatePct", label: "Left without a taxi", unit: "%", digits: 1, lowerBetter: true,
+    hint: "Share of people who gave up and left before a taxi came." },
+  { key: "queueAvg", label: "People waiting", unit: "", digits: 0, lowerBetter: true,
+    hint: "How many people are standing in the queues, on average." },
+  { key: "standUtilPct", label: "Stands busy", unit: "%", digits: 0, lowerBetter: false,
+    hint: "How much of the time a boarding stand has a taxi in it." },
+  { key: "bufferAvg", label: "Taxis waiting", unit: "", digits: 0, lowerBetter: false,
+    hint: "Empty taxis waiting for a passenger. If this is high while people still queue, the stands are the limit." },
 ];
 
 function renderHero(m) {
@@ -542,8 +547,18 @@ function renderHero(m) {
   if (sub) {
     const ab = m.abandonRatePct;
     sub.textContent = ab >= 1
-      ? `about 1 in ${Math.max(2, Math.round(100 / ab))} people give up`
-      : "almost nobody gives up";
+      ? `about 1 in ${Math.max(2, Math.round(100 / ab))} leave without a taxi`
+      : "almost everyone gets a taxi";
+  }
+
+  const pw = $("#peekWait");
+  if (pw) pw.textContent = Number.isFinite(w) ? w.toFixed(1) : "—";
+  const ps = $("#peekSub");
+  if (ps) {
+    const ab = m.abandonRatePct;
+    ps.textContent = ab >= 1
+      ? `about 1 in ${Math.max(2, Math.round(100 / ab))} leave without a taxi`
+      : "almost everyone gets a taxi";
   }
 
   const kicker = $("#heroKicker");
@@ -570,9 +585,10 @@ function renderKpis(m, ms) {
     }
     host.insertAdjacentHTML(
       "beforeend",
-      `<div class="kpi">
+      `<div class="kpi"${k.hint ? ` title="${k.hint}"` : ""}>
          <div class="kpi-top">${k.label}${delta}</div>
          <div class="kpi-val">${v.toFixed(k.digits)}<span>${k.unit}</span></div>
+         ${k.hint ? `<div class="kpi-hint">${k.hint}</div>` : ""}
        </div>`
     );
   }
@@ -862,7 +878,7 @@ function saveScenario() {
 
 const CARDS = [
   {
-    label: "Digital queue ticket",
+    label: "Digital ticket (no 8-minute stop)",
     icon: "ticket",
     cost: { capital: 2e6, years: 5, annual: 2e5, kind: "software" },
     pilot: { metric: "ticket-to-stand time, empty taxis per hour", weeks: 3 },
@@ -877,7 +893,7 @@ const CARDS = [
       "paid by the driver rather than the passenger.",
   },
   {
-    label: "Real-time queue information",
+    label: "Live queue info for drivers",
     icon: "info",
     cost: { capital: 1.5e6, years: 5, annual: 1e5, kind: "software" },
     pilot: { metric: "taxi arrivals when the queue is short vs long", weeks: 6 },
@@ -891,7 +907,7 @@ const CARDS = [
       "before a queue formed.",
   },
   {
-    label: "Cross-boundary taxi quota",
+    label: "Taxis licensed to cross both ways",
     icon: "route",
     cost: { capital: 0, years: 1, annual: 0, kind: "licensing" },
     pilot: { metric: "taxis per hour arriving loaded vs empty", weeks: 12 },
@@ -907,7 +923,7 @@ const CARDS = [
       "tolerate it. Needs an agreement with the Mainland side.",
   },
   {
-    label: "Fleet channel + its own stands",
+    label: "More pre-booked trips, with stands",
     icon: "car",
     cost: { capital: 3e6, years: 10, annual: 4e5, kind: "capital" },
     pilot: { metric: "fleet trips per hour, fleet passenger wait", weeks: 8 },
@@ -922,7 +938,7 @@ const CARDS = [
       "-5.9 min.",
   },
   {
-    label: "App / fleet pre-registration",
+    label: "Book before you arrive",
     icon: "app",
     cost: { capital: 1e6, years: 5, annual: 3e5, kind: "software" },
     pilot: { metric: "share pre-registered, boarding time per taxi", weeks: 8 },
@@ -936,7 +952,7 @@ const CARDS = [
       "it measures at zero, because the hall has no taxis to board any faster.",
   },
   {
-    label: "Two extra stands",
+    label: "Two more boarding stands",
     icon: "stand",
     cost: { capital: 8e6, years: 20, annual: 1e6, kind: "capital" },
     pilot: { metric: null, weeks: null },
@@ -1461,41 +1477,93 @@ function init() {
   };
   window.__setSheet = (open) => applySheet(open ? "half" : "peek");
 
-  // tap cycles peek -> half -> full -> peek
+  // a tap toggles between closed and half; full is reached by dragging
+  let lastDragEnd = 0;
   sheet?.addEventListener("click", () => {
-    applySheet(sheetState === "peek" ? "half" : sheetState === "half" ? "full" : "peek");
+    if (Date.now() - lastDragEnd < 350) return;
+    applySheet(sheetState === "peek" ? "half" : "peek");
   });
 
   // drag the handle to snap between the three heights
   if (sheet && IS_PHONE) {
-    let startY = 0;
-    let startH = 0;
-    let dragging = false;
+    let startY = 0, startH = 0, dragging = false, lastY = 0, lastT = 0, vel = 0;
+    let moved = false;
+    let pointerId = -1;
 
-    sheet.addEventListener("pointerdown", (e) => {
-      dragging = true;
-      startY = e.clientY;
-      startH = panelEl.getBoundingClientRect().height;
-      sheet.setPointerCapture?.(e.pointerId);
+    const snapPoints = () => ({
+      peek: 200,
+      half: Math.round(innerHeight * 0.54),
+      full: Math.round(innerHeight * 0.92),
     });
-    sheet.addEventListener("pointermove", (e) => {
+
+    // while collapsed the whole sheet is a handle: people grab the sheet, not
+    // a 38px strip. Once open, only the handle resizes it.
+    const startDrag = (e) => {
+      if (e.pointerType === "mouse" && e.button !== 0) return;
+      const onHandle = sheet.contains(e.target);
+      if (sheetState !== "peek" && !onHandle) return;
+      dragging = true;
+      startY = lastY = e.clientY;
+      startH = panelEl.getBoundingClientRect().height;
+      lastT = performance.now();
+      vel = 0;
+      moved = false;
+      pointerId = e.pointerId;
+    };
+
+    const moveDrag = (e) => {
       if (!dragging) return;
       const dy = startY - e.clientY;
-      const h = Math.max(90, Math.min(innerHeight * 0.92, startH + dy));
+      if (!moved && Math.abs(dy) > 6) {
+        moved = true;
+        panelEl.classList.add("dragging");
+        // capture only now, otherwise the pointerup is retargeted away from
+        // the handle and the tap never turns into a click
+        try { panelEl.setPointerCapture(pointerId); } catch {}
+        document.body.classList.add("sheet-open");
+      }
+      if (!moved) return;
+      const h = Math.max(120, Math.min(innerHeight * 0.94, startH + dy));
       panelEl.style.height = `${Math.round(h)}px`;
-      document.body.classList.add("sheet-open");
-    });
+      const now = performance.now();
+      const dt = now - lastT;
+      if (dt > 0) { vel = (lastY - e.clientY) / dt; lastY = e.clientY; lastT = now; }
+    };
+
     const endDrag = () => {
       if (!dragging) return;
       dragging = false;
+      if (!moved) return;
+      panelEl.classList.remove("dragging");
       const h = panelEl.getBoundingClientRect().height;
-      const opts = [["peek", 150], ["half", innerHeight * 0.46], ["full", innerHeight * 0.86]];
-      let best = opts[0];
-      for (const o of opts) if (Math.abs(o[1] - h) < Math.abs(best[1] - h)) best = o;
-      applySheet(best[0]);
+      const pts = snapPoints();
+      let best = "peek", bd = Infinity;
+      for (const k of ["peek", "half", "full"]) {
+        const d = Math.abs(pts[k] - h);
+        if (d < bd) { bd = d; best = k; }
+      }
+      // a flick carries you a step further than the position alone would
+      if (vel > 0.9) best = best === "peek" ? "half" : "full";
+      else if (vel < -0.9) best = best === "full" ? "half" : "peek";
+      // a tiny wobble while tapping should not move the sheet
+      if (Math.abs(h - startH) < 10 && Math.abs(vel) < 0.9) best = sheetState;
+      if (Math.abs(h - startH) > 10) lastDragEnd = Date.now();
+      applySheet(best);
     };
-    sheet.addEventListener("pointerup", endDrag);
-    sheet.addEventListener("pointercancel", endDrag);
+
+    panelEl.addEventListener("pointerdown", startDrag);
+    panelEl.addEventListener("pointermove", moveDrag);
+    panelEl.addEventListener("pointerup", endDrag);
+    panelEl.addEventListener("pointercancel", endDrag);
+
+    // pull down at the top of the content to close
+    let overY = null;
+    scrollEl.addEventListener("pointerdown", (e) => { overY = scrollEl.scrollTop <= 0 ? e.clientY : null; });
+    scrollEl.addEventListener("pointerup", (e) => {
+      if (overY == null) return;
+      if (e.clientY - overY > 80 && scrollEl.scrollTop <= 0) applySheet("peek");
+      overY = null;
+    });
   }
 
   $("#runBtn").addEventListener("click", () => {
@@ -1518,16 +1586,26 @@ function init() {
     setTimeout(() => window.print(), 120);
   });
 
-  $("#helpBtn")?.addEventListener("click", () => {
-    if (IS_PHONE) applySheet("half");
-    setTimeout(() => {
-      const el = document.getElementById("newcomer");
-      const sc = document.getElementById("panelScroll");
-      if (el) el.open = true;
-      if (el && sc) el.scrollIntoView({ block: "center", behavior: "smooth" });
-      el?.classList.add("flash");
-      setTimeout(() => el?.classList.remove("flash"), 1200);
-    }, 260);
+  // the guide is a modal, so it looks the same on desktop and phone
+  const helpModal = $("#helpModal");
+  const openHelp = () => {
+    if (!helpModal) return;
+    helpModal.hidden = false;
+    document.body.classList.add("help-open");
+    helpModal.querySelector(".help-x")?.focus({ preventScroll: true });
+  };
+  const closeHelp = () => {
+    if (!helpModal || helpModal.hidden) return;
+    helpModal.hidden = true;
+    document.body.classList.remove("help-open");
+    $("#helpBtn")?.focus({ preventScroll: true });
+  };
+  $("#helpBtn")?.addEventListener("click", openHelp);
+  helpModal?.addEventListener("click", (e) => {
+    if (e.target.closest("[data-help-close]")) closeHelp();
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && helpModal && !helpModal.hidden) closeHelp();
   });
 
   $("#heroCta")?.addEventListener("click", () => {
