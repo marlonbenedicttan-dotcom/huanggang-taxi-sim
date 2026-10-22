@@ -238,19 +238,70 @@ function buildControls() {
         section.appendChild(row);
         continue;
       }
+      // the number box works in display units (percent shows 0-100, not 0-1)
+      const dMin = item.pct ? item.min * 100 : item.min;
+      const dMax = item.pct ? item.max * 100 : item.max;
+      const dStep = item.pct ? item.step * 100 : item.step;
+      const show = (v) => (item.pct ? +(v * 100).toFixed(1) : item.int ? Math.round(v) : +v.toFixed(2));
+      const hide = (n) => (item.pct ? n / 100 : n);
+      const unitText = item.pct ? "%" : item.unit || "";
+
       row.innerHTML = `
-        <div class="lab"><label for="c-${item.key}">${item.label}</label>
-          <output id="o-${item.key}">${fmt(item, valueOf(item.key))}</output></div>
+        <div class="lab">
+          <label for="c-${item.key}">${item.label}</label>
+          <span class="numwrap">
+            <input id="n-${item.key}" class="num" type="number" inputmode="decimal"
+                   min="${dMin}" max="${dMax}" step="${dStep}"
+                   value="${show(valueOf(item.key))}"
+                   aria-label="${item.label}" />
+            <span class="unit">${unitText}</span>
+          </span>
+        </div>
         <input id="c-${item.key}" type="range" min="${item.min}" max="${item.max}"
                step="${item.step}" value="${valueOf(item.key)}" />`;
-      const input = row.querySelector("input");
-      const out = row.querySelector("output");
+
+      const input = row.querySelector('input[type="range"]');
+      const num = row.querySelector(".num");
+
+      const parseNum = (raw) => {
+        const n = Number(String(raw).trim().replace(",", "."));
+        return Number.isFinite(n) ? n : NaN;
+      };
+
+      const clampTo = (n) => {
+        const lo = Number.isFinite(dMin) ? dMin : -Infinity;
+        const hi = Number.isFinite(dMax) ? dMax : Infinity;
+        return Math.min(hi, Math.max(lo, n));
+      };
+
+      const apply = (n, { commit = false } = {}) => {
+        if (!Number.isFinite(n)) return;
+        const shown = commit ? clampTo(n) : n;
+        let v = hide(shown);
+        if (item.int) v = Math.round(v);
+        state.values[item.key] = v;
+        input.value = v;
+        if (commit) num.value = show(v);
+        setPreset(null);
+        scheduleRun(commit ? 120 : 320);
+      };
+
       input.addEventListener("input", () => {
         state.values[item.key] = Number(input.value);
-        out.textContent = fmt(item, Number(input.value));
+        num.value = show(state.values[item.key]);
         setPreset(null);
         scheduleRun();
       });
+
+      num.addEventListener("input", () => {
+        const n = parseNum(num.value);
+        if (num.value.trim() !== "" && Number.isFinite(n)) apply(n);
+      });
+      num.addEventListener("change", () => apply(parseNum(num.value), { commit: true }));
+      num.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") { e.preventDefault(); num.blur(); }
+      });
+
       section.appendChild(row);
     }
     (advanced || host).appendChild(section);
@@ -267,8 +318,11 @@ function syncControls() {
         el.classList.toggle("on", !!valueOf(item.key));
       } else {
         el.value = valueOf(item.key);
-        const out = $(`#o-${item.key}`);
-        if (out) out.textContent = fmt(item, Number(valueOf(item.key)));
+        const num = $(`#n-${item.key}`);
+        if (num && document.activeElement !== num) {
+          const v = Number(valueOf(item.key));
+          num.value = item.pct ? +(v * 100).toFixed(1) : item.int ? Math.round(v) : +v.toFixed(2);
+        }
       }
     }
   }
