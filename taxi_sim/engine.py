@@ -93,10 +93,14 @@ class Config:
     # is paid by the driver, not the passenger, so it works like a cut in the
     # supply that turns up: a taxi spends T minutes per port visit, and T + delay
     # is what the driver now has to spend.
+    # ---- information and night service --------------------------------
+    info_share: float = 0.0                 # 0-1: drivers who check live demand before setting off
+    night_min_taxis: float = 0.0            # taxis/hour guaranteed per lane between 00:00 and 06:00
     port_dwell_min: float = 25.5            # average taxi time at the port (model output)
     ticket_delay_min: float = 8.0           # 1.5 = digital ticket, 8 = paper ticket
     supply_lag_hours: int = 1               # drivers react one hour late
     supply_flatness: float = 0.55           # 0 = follows demand, 1 = flat
+    night_supply_factor: float = 0.35       # extra thinning of supply between 00:00 and 06:00
     buffer_capacity: int = 40               # spaces per taxi lane (urban / NT)
     flex_buffer_capacity: int = 15          # spaces for flexible taxis
     prebook_supply_ratio: float = 1.15      # booking system guarantees supply
@@ -256,9 +260,12 @@ class Simulation:
             rotated(cfg.demand_profile, cfg.nt_shift_hours), self._window_hours()
         )
         flat = tuple(
-            (1.0 - cfg.supply_flatness)
-            * rotated(cfg.demand_profile, cfg.supply_lag_hours)[h]
-            + cfg.supply_flatness
+            (
+                (1.0 - cfg.supply_flatness)
+                * rotated(cfg.demand_profile, cfg.supply_lag_hours)[h]
+                + cfg.supply_flatness
+            )
+            * (cfg.night_supply_factor if h < 6 else 1.0)
             for h in range(24)
         )
         self.supply_mult = _normalise(flat, self._window_hours())
@@ -303,6 +310,7 @@ class Simulation:
         self.taxi_left_empty = 0
         self.misroutes = 0
         self.recircs = 0
+        self.taxi_diverted = 0
         self.taxi_buffer_waits = []
         self.taxi_dwells = []
 
@@ -335,7 +343,12 @@ class Simulation:
             # bookings are scheduled, so supply follows the booking curve and
             # is guaranteed by the operator
             return self.base_taxi_rate[cls] * self.supply_ratio[cls] * self.demand_mult[hour]
-        return self.base_taxi_rate[cls] * self.supply_ratio[cls] * self.supply_mult[hour]
+
+        rate = self.base_taxi_rate[cls] * self.supply_ratio[cls] * self.supply_mult[hour]
+        # a contracted overnight minimum keeps a few cars available all night
+        if hour < 6 and self.cfg.night_min_taxis > 0:
+            rate = max(rate, self.cfg.night_min_taxis)
+        return rate
 
     def _poisson_times(self, rate_fn):
         """Exact sampling of a non-homogeneous Poisson process (piecewise
@@ -370,7 +383,7 @@ class Simulation:
                 pax = Pax(t, cls, self.rng.random() < cfg.app_share)
                 push((t, 0, "PAX", pax))
             for t in self._poisson_times(lambda h, c=cls: self._taxi_rate(c, h)):
-                flex = cls in POOL_CLASSES and self.rng.random() < cfg.flex_share
+                flex = cls == "urban" and self.rng.random() < cfg.flex_share
                 push((t, 1, "TAXI", (cls if not flex else None, t, flex)))
 
         # dispatch epochs (manual process) + time-average sampling
@@ -570,6 +583,13 @@ class Simulation:
             elif kind == "TAXI":
                 cls, t_first, flex = payload
                 if (
+                    cfg.info_share > 0
+                    and len(self.pq[cls]) < 6
+                    and self.rng.random() < cfg.info_share
+                ):
+                    self.taxi_diverted += 1
+                    continue
+                if (
                     cls in POOL_CLASSES
                     and not flex
                     and cfg.misroute_prob > 0
@@ -700,6 +720,7 @@ class Simulation:
             "taxi_arrived": self.taxi_arrived,
             "taxi_served": self.taxi_served,
             "taxi_left_empty": self.taxi_left_empty,
+            "taxi_diverted": self.taxi_diverted,
             "taxi_waste_pct": 100.0 * self.taxi_left_empty / max(self.taxi_arrived, 1),
             "buffer_avg": _mean(buf),
             "buffer_max": max(buf) if buf else 0,

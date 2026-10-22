@@ -76,8 +76,11 @@ export const DEFAULTS = {
   // queue-ticket regime: paper ticket at the buffer costs the driver ~8 min
   portDwellMin: 25.5,
   ticketDelayMin: 8,
+  infoShare: 0,
+  nightMinTaxis: 0,
   supplyLagHours: 2,
   supplyFlatness: 0.55,
+  nightSupplyFactor: 0.35,
   prebookSupplyRatio: 1.15,
   bufferCapacity: 40,
   flexBufferCapacity: 15,
@@ -271,7 +274,9 @@ export class Simulation {
     this.demandMult = Simulation.norm(cfg.demandProfile, wh);
     this.ntMult = Simulation.norm(rotated(cfg.ntShiftHours), wh);
     const lagged = rotated(cfg.supplyLagHours);
-    const flat = lagged.map((v) => (1 - cfg.supplyFlatness) * v + cfg.supplyFlatness);
+    const flat = lagged.map((v, h) =>
+      ((1 - cfg.supplyFlatness) * v + cfg.supplyFlatness) *
+      (h < 6 ? (cfg.nightSupplyFactor ?? 0.35) : 1));
     this.supplyMult = Simulation.norm(flat, wh);
 
     const parties = cfg.paxPerHour / cfg.partySize;
@@ -315,7 +320,12 @@ export class Simulation {
     if (cls === "prebook") {
       return this.baseTaxiRate.prebook * this.supplyRatio.prebook * this.demandMult[hour];
     }
-    return this.baseTaxiRate[cls] * this.supplyRatio[cls] * this.supplyMult[hour];
+    let rate = this.baseTaxiRate[cls] * this.supplyRatio[cls] * this.supplyMult[hour];
+    // a contracted overnight minimum keeps a few cars available all night
+    if (hour < 6 && this.cfg.nightMinTaxis > 0) {
+      rate = Math.max(rate, this.cfg.nightMinTaxis);
+    }
+    return rate;
   }
 
   /** Exact non-homogeneous Poisson sampling, piecewise constant per hour. */
@@ -354,7 +364,7 @@ export class Simulation {
         this.push(t, EV.PAX, cls, this.rng() < cfg.appShare ? 1 : 0, 0);
       }
       for (const t of this.poissonTimes((h) => this.taxiRate(cls, h))) {
-        const flex = POOL_CLASSES.includes(cls) && this.rng() < cfg.flexShare;
+        const flex = cls === "urban" && this.rng() < cfg.flexShare;
         this.push(t, EV.TAXI, cls, t, flex ? 1 : 0);
       }
     }
@@ -555,6 +565,10 @@ export class Simulation {
           const cls = a;
           const tFirst = b;
           const flex = c === 1;
+          if (cfg.infoShare > 0 && this.pq[cls].length < 6 && this.rng() < cfg.infoShare) {
+            this.diverted = (this.diverted || 0) + 1;
+            break;
+          }
           if (
             POOL_CLASSES.includes(cls) && !flex &&
             cfg.misrouteProb > 0 && this.rng() < cfg.misrouteProb

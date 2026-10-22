@@ -317,6 +317,41 @@ instead of 20, so the *direction* is solid and the magnitude is an upper bound.
 its baseline is the no-ticket world (7.7 min). The website now runs with the
 8-minute ticket by default.
 
+### Sequencing: the ticket has to be fixed first
+
+With the paper ticket in place, app pre-registration and extra stands measure at
+**zero**. The hall is starved of taxis, so making boarding faster or adding
+stands changes nothing. Once a digital ticket restores supply, the same two
+policies are each worth about **1.3 minutes**:
+
+| | paper ticket (8 min) | digital ticket (1.5 min) |
+|---|---|---|
+| baseline | 20.2 min | 8.8 min |
+| + app pre-registration | 20.2 (−0.04) | 7.5 (−1.3) |
+| + two extra stands | 20.2 | 7.5 (−1.3) |
+
+This is why the policy cards show almost nothing until you switch the ticket on.
+
+### Sensitivity: which assumptions matter
+
+Twenty replications per point, swinging each assumption around the current
+baseline (paper ticket, 550 pax/h, 20.2 min):
+
+| Assumption | Swing | Change |
+|---|---|---|
+| Demand ±20% | 440–660 pax/h | **17.7 min** |
+| Taxi supply ±20% | 0.84–1.26× | 12.7 |
+| Passenger patience | 25–45 min | 11.6 |
+| Ticket delay | 4–12 min | 7.3 |
+| How much the ticket deters drivers | dwell 20–32 min | 2.7 |
+| Live information share | 0–60% | 1.9 |
+| Boarding time | 1.2–1.8 min | 0.2 |
+
+The headline is dominated by demand and supply because the hall sits near
+capacity — a property of queueing systems, not of the model. Among the things
+that were *assumed* rather than measured, patience matters most, then the ticket
+response. Boarding time barely matters: the stands are not the constraint.
+
 ### Which policies fit this port
 
 | Policy | Fits Huanggang today? |
@@ -329,6 +364,8 @@ its baseline is the no-ticket world (7.7 min). The website now runs with the
 | Flexible taxis | no — green taxis stay licensed for NT destinations |
 | Pooled pickup bays | no — red and green have separate stands by licence |
 | Continuous dispatch, digital lane routing | measured at ~0 min either way |
+| Overnight minimum service | no measurable effect: the model has more taxis than passengers after midnight |
+| Red taxis helping the NT queue | legal, but measures at zero in both urban-heavy and NT-heavy mixes |
 
 ## 5. Results (default calibration, 30 replications each)
 

@@ -41,8 +41,8 @@ const GROUPS = [
   {
     name: "Taxi mix",
     items: [
-      { key: "flexShare", label: "Taxis taking either queue", min: 0, max: 0.6, step: 0.05, pct: true,
-        hint: "Share of taxis allowed to serve either destination. A regulation question, not a software one." },
+      { key: "flexShare", label: "Red taxis that may serve the NT queue", min: 0, max: 0.6, step: 0.05, pct: true,
+        hint: "Share of urban (red) taxis allowed to take a New Territories fare. Red taxis may go anywhere, so this needs no law change; green taxis stay NT-only." },
     ],
   },
   {
@@ -50,6 +50,10 @@ const GROUPS = [
     items: [
       { key: "ticketDelayMin", label: "Queue-ticket delay per taxi", min: 0, max: 10, step: 0.5, unit: "min",
         hint: "Time a driver loses collecting a ticket at the buffer before reaching the rank. The paper system at the new port costs about 8 minutes per trip; a digital ticket should cost about 1.5." },
+      { key: "infoShare", label: "Drivers who check live demand", min: 0, max: 1, step: 0.05, pct: true,
+        hint: "Share of drivers who see real-time passenger numbers before setting off, and stay away when the hall is quiet. The taxi trade asked for this. It saves drivers time but can remove supply exactly when a queue is growing." },
+      { key: "nightMinTaxis", label: "Overnight minimum taxis per lane", min: 0, max: 24, step: 1, unit: "per hour",
+        hint: "Contracted cars guaranteed between midnight and 06:00, when no one wants to come. Only matters in the 24-hour window." },
     ],
   },
   {
@@ -102,6 +106,7 @@ const POLICY_KEYS = [
   "dispatchIntervalMin", "dispatchBatch", "pooledStands", "appShare",
   "flexShare", "misrouteProb", "stands.urban", "stands.nt", "taxiSupplyRatioNt",
   "backhaulMatch", "portSurchargeHkd", "waitAllowanceHkd", "ticketDelayMin",
+  "infoShare", "nightMinTaxis",
 ];
 
 const IS_PHONE =
@@ -109,11 +114,12 @@ const IS_PHONE =
   (navigator.maxTouchPoints > 1 && window.innerWidth < 1100);
 
 const WINDOWS = [
-  { label: "Peak 08:30–09:15", from: 30, to: 75 },   // default: a watchable slice
-  { label: "Morning 08–11", from: 0, to: 180 },
-  { label: "Midday 11–14", from: 180, to: 360 },
-  { label: "Evening 16–19", from: 480, to: 660 },
-  { label: "Whole shift 08–20", from: 0, to: 720 },
+  { label: "Peak 08:30–09:15", from: 30, to: 75, hours: 12 },   // default: a watchable slice
+  { label: "Morning 08–11", from: 0, to: 180, hours: 12 },
+  { label: "Midday 11–14", from: 180, to: 360, hours: 12 },
+  { label: "Evening 16–19", from: 480, to: 660, hours: 12 },
+  { label: "Whole shift 08–20", from: 0, to: 720, hours: 12 },
+  { label: "Full 24 hours (port never closes)", from: 0, to: 1440, hours: 24 },
 ];
 
 const PRESETS = {
@@ -366,6 +372,7 @@ function buildConfig(vals = state.values) {
   const step = Math.max(0.25, (to - from) / 900);
   return {
     ...DEFAULTS,
+    durationHours: w.hours || 12,
     paxPerHour: valueOf("paxPerHour"),
     urbanShare: valueOf("urbanShare"),
     prebookShare: valueOf("prebookShare"),
@@ -389,6 +396,8 @@ function buildConfig(vals = state.values) {
     appShare: valueOf("appShare"),
     fastCheckinFactor: valueOf("appShare") > 0 ? 0.75 : 1,
     ticketDelayMin: valueOf("ticketDelayMin"),
+    infoShare: valueOf("infoShare"),
+    nightMinTaxis: valueOf("nightMinTaxis"),
     portDwellMin: 25.5,
     backhaulMatch: valueOf("backhaulMatch"),
     portSurchargeHkd: valueOf("portSurchargeHkd"),
@@ -401,7 +410,14 @@ function buildConfig(vals = state.values) {
 
 function syncWindowSelect() {
   const sel = $("#windowSel");
-  if (sel) sel.value = String(state.window);
+  if (!sel) return;
+  // build the options from WINDOWS so the list can never drift from the config
+  if (sel.options.length !== WINDOWS.length) {
+    sel.innerHTML = WINDOWS
+      .map((w, i) => `<option value="${i}">${w.label}</option>`)
+      .join("");
+  }
+  sel.value = String(state.window);
 }
 
 function run() {
@@ -732,6 +748,8 @@ function updateHud(frame) {
 const CARDS = [
   {
     label: "Digital queue ticket",
+    cost: { capital: 2e6, years: 5, annual: 2e5, kind: "software" },
+    pilot: { metric: "ticket-to-stand time, empty taxis per hour", weeks: 3 },
     on: { ticketDelayMin: 1.5 },
     off: { ticketDelayMin: 8 },
     isOn: (v) => Number(v.ticketDelayMin) < 6,
@@ -743,26 +761,42 @@ const CARDS = [
       "paid by the driver rather than the passenger.",
   },
   {
+    label: "Real-time queue information",
+    cost: { capital: 1.5e6, years: 5, annual: 1e5, kind: "software" },
+    pilot: { metric: "taxi arrivals when the queue is short vs long", weeks: 6 },
+    on: { infoShare: 0.6 },
+    off: { infoShare: 0 },
+    isOn: (v) => Number(v.infoShare) > 0,
+    note:
+      "Publish live passenger numbers so drivers can decide before setting off — what " +
+      "the trade asked for in October 2026. Honest warning: it helps drivers and hurts " +
+      "passengers. The cars that stay away are the ones that would have arrived just " +
+      "before a queue formed.",
+  },
+  {
     label: "App / fleet pre-registration",
+    cost: { capital: 1e6, years: 5, annual: 3e5, kind: "software" },
+    pilot: { metric: "share pre-registered, boarding time per taxi", weeks: 8 },
     on: { appShare: 0.85 },
     off: { appShare: 0 },
     isOn: (v) => Number(v.appShare) > 0,
     note:
       "Passengers check in before they arrive, so boarding is quicker and the hall " +
-      "knows how many are coming. It already exists in a limited form: licensed fleet " +
-      "taxis can be booked, and the terminal has a lounge for their passengers. " +
-      "Extending it to walk-up trips is software, not construction.",
+      "knows how many are coming. Fleet taxis are already bookable and have a lounge. " +
+      "Worth about 1.3 minutes — but only once the ticket is fixed: on the paper ticket " +
+      "it measures at zero, because the hall has no taxis to board any faster.",
   },
   {
     label: "Two extra stands",
+    cost: { capital: 8e6, years: 20, annual: 1e6, kind: "capital" },
+    pilot: { metric: null, weeks: null },
     on: { "stands.urban": 10, "stands.nt": 4 },
     off: { "stands.urban": 8, "stands.nt": 3 },
     isOn: (v) => Number(v["stands.urban"]) > 8 || Number(v["stands.nt"]) > 3,
     note:
-      "Build two more boarding stands. This is capital works and the port only opened " +
-      "in October 2026 with a fixed layout, so treat it as a long-term option rather " +
-      "than something available now. It buys about the same as the app does, for far " +
-      "more money.",
+      "Build two more boarding stands. Capital works, and the port only opened in " +
+      "October 2026 with a fixed layout, so treat it as long-term. It buys about the " +
+      "same as the app (~1.3 min) once the ticket is fixed, and nothing at all before.",
   },
 ];
 
@@ -829,6 +863,7 @@ function renderCards() {
       Object.assign(state.values, on ? card.off : card.on);
       syncControls();
       renderCards();
+      renderPilot();
       setPreset(null);
       run();
     });
@@ -894,7 +929,10 @@ function computeEffects() {
         card.effectSE = Math.hypot(st.se, base.se);
         card.effectN = seeds.length;
         renderCards();
+        renderPilot();
+        renderValue();
       } else {
+        renderValue();
         return;
       }
     } catch {}
@@ -908,6 +946,54 @@ let effectsTimer = null;
 function scheduleEffects(delay = 1100) {
   clearTimeout(effectsTimer);
   effectsTimer = setTimeout(computeEffects, delay);
+}
+
+/** Cost per passenger-minute saved, from the assumptions written on each card.
+ *  These are illustrative order-of-magnitude figures, not quotes. */
+function renderPilot() {
+  const host = $("#pilotRows");
+  if (!host) return;
+  const on = CARDS.filter((c) => c.isOn(state.values) && c.pilot?.weeks);
+  if (!on.length) {
+    host.innerHTML = `<tr><td colspan="3" class="muted">switch on a policy to see what a trial would measure</td></tr>`;
+    return;
+  }
+  host.innerHTML = on.map((c) => `<tr>
+      <td>${c.label}</td>
+      <td>${c.pilot.metric}</td>
+      <td class="num">${c.pilot.weeks} weeks</td>
+    </tr>`).join("");
+}
+
+function renderValue() {
+  const host = $("#valueRows");
+  if (!host) return;
+  const hours = WINDOWS[state.window].hours || 12;
+  const paxPerDay = valueOf("paxPerHour") * hours;
+
+  const rows = CARDS
+    .filter((c) => c.effect != null && c.cost)
+    .map((c) => {
+      const daily = c.cost.daily != null
+        ? c.cost.daily
+        : (c.cost.capital / c.cost.years + c.cost.annual) / 365;
+      const gain = -c.effect;                      // minutes saved per passenger
+      const perMin = gain > 0.3 ? daily / (gain * paxPerDay) : null;
+      return { label: c.label, effect: c.effect, daily, perMin, kind: c.cost.kind };
+    })
+    .sort((a, b) => (a.perMin ?? Infinity) - (b.perMin ?? Infinity));
+
+  host.innerHTML = rows.map((r) => {
+    const value = r.perMin == null
+      ? "<span class='muted'>no measurable gain</span>"
+      : `HK$${r.perMin < 0.01 ? r.perMin.toFixed(3) : r.perMin.toFixed(2)}`;
+    return `<tr>
+      <td>${r.label}</td>
+      <td class="num">${r.effect >= 0 ? "+" : ""}${r.effect.toFixed(1)} min</td>
+      <td class="num">${r.daily ? "HK$" + Math.round(r.daily).toLocaleString() : "—"}</td>
+      <td class="num">${value}</td>
+    </tr>`;
+  }).join("");
 }
 
 /* ---------------- A/B state ---------------- */
