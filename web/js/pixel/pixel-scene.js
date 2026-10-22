@@ -28,7 +28,7 @@ let OX = 16;
 let OY = 118;   // screen y of z = 0
 
 const LANDSCAPE = { W: 640, H: 360, U: 12.6, V: 6.9, OX: 16, OY: 118 };
-const PORTRAIT = { W: 420, H: 520, U: 12.0, V: 10.5, OX: -86, OY: 150 };
+const PORTRAIT = { W: 640, H: 520, U: 12.0, V: 10.5, OX: 36, OY: 150 };
 
 // The apron, lanes and terminal are drawn wider than the visible world so the
 // frame never shows the edge of the building against bare grass.
@@ -319,6 +319,8 @@ export class PixelScene {
    * closer than "fit" so there is room to drag without ever auto-zooming.
    */
   _defaultCam() {
+    // portrait artwork already spans the whole hall, so show all of it
+    if (this.portrait) return { x: W / 2, y: H / 2, zoom: 1 };
     return { x: X(24), y: Z(5.5), zoom: 1.25 };
   }
 
@@ -332,7 +334,8 @@ export class PixelScene {
     const v = this.view;
     if (!v) return;
     const key = `${v.W}x${v.H}`;
-    if (this._viewKey && this._viewKey !== key) this.resetView();
+    // first application, or switching between phone and desktop framing
+    if (this._viewKey !== key) this.resetView();
     this._viewKey = key;
     if (W !== v.W || H !== v.H) {
       W = v.W; H = v.H;
