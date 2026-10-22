@@ -59,6 +59,93 @@
           Browser port of the Python research model — validated in
           <code>tests/parity_check.py</code>.
         </footer>
+
+        <details id="howItWorks">
+          <summary>How the simulation works</summary>
+          <div class="how">
+            <p class="lede">
+              In one sentence: it runs a whole day one minute at a time — people arrive and
+              queue for a taxi, empty taxis arrive and wait, and whoever pairs up first leaves.
+            </p>
+
+            <h4>Minute by minute</h4>
+            <ol>
+              <li><b>People arrive</b> at the terminal doors at the rate you set (550 an hour by
+                default), following the real shape of a day — quiet morning, busy peaks. Each one
+                is randomly urban (red), New Territories (green) or pre-booked (blue).</li>
+              <li><b>They join their lane's queue.</b> Everyone starts at the back and shuffles
+                forward. They also have a patience limit: wait longer than 35 minutes and they
+                leave — that is the "gave up" number.</li>
+              <li><b>Empty taxis arrive</b> from the city at the rate set by the supply sliders
+                (1.05&times; demand for urban, 0.95&times; for NT). They park in the buffer at the
+                entrance.</li>
+              <li><b>Staff release taxis</b> from the buffer into the pickup bays — in a batch
+                every minute in the current process, or one at a time with continuous dispatch.</li>
+              <li><b>A taxi takes the next person</b> in its lane and boards them. Boarding takes
+                about 1.5 minutes, or 25% less if they pre-registered on the app.</li>
+              <li><b>The taxi leaves</b> with the passenger and the next taxi takes the bay.</li>
+              <li><b>If the buffer is full</b>, arriving taxis circle and come back later — so a
+                full buffer quietly costs you supply.</li>
+              <li><b>If a taxi is sent to the wrong lane</b>, it has to circle back. That is the
+                misrouting setting, and it wastes time for everyone.</li>
+              <li><b>Repeat for 12 hours</b>, then report the averages.</li>
+            </ol>
+
+            <h4>What the numbers mean</h4>
+            <ul>
+              <li><b>Mean wait</b> — average time from arriving at the hall to sitting in a taxi.</li>
+              <li><b>90th percentile</b> — the unlucky one in ten. The tail is what people complain
+                about, and it is always worse than the average.</li>
+              <li><b>Gave up</b> — share who left before getting a taxi.</li>
+              <li><b>Avg waiting</b> — how many people are in the queues at any moment.</li>
+              <li><b>Avg bays busy</b> — share of the time each bay is occupied. Near 100% means the
+                bays, not the taxis, are the limit.</li>
+              <li><b>Avg taxis waiting</b> — empty taxis in the buffer. High, while people still
+                wait? The problem is bays or dispatch, not supply.</li>
+            </ul>
+
+            <h4>Why it behaves the way it does</h4>
+            <p>
+              The bays are the bottleneck. Eight urban bays boarding one taxi every 1.5 minutes can
+              serve about <b>320 parties an hour</b>, and the urban lane receives about
+              <b>317</b> — the two are almost identical, which is why the queue builds at the peak
+              and why adding bays helps so much.
+            </p>
+            <p>
+              Adding taxis only helps while taxis are the constraint. Once the buffer is full, more
+              supply changes nothing. And demand hurts more than proportionally, because empty
+              taxis keep arriving at roughly the same rate whether the hall is busy or not — that
+              is what makes a demand surge bite.
+            </p>
+
+            <h4>Driver incentives — the return leg</h4>
+            <p>
+              A taxi that brings someone to the port has no guaranteed fare back, so the trip is
+              worth less than an hour in the city and many drivers simply skip it. The three
+              incentive policies raise what the trip is worth and therefore how many taxis turn up.
+            </p>
+            <p class="warn">
+              The size of that response is <b>assumed, not measured</b> — nobody has published a
+              driver supply elasticity for this port. The shape is what to trust: the benefit
+              saturates (matching a fifth of return trips captures most of it) and the instruments
+              substitute for each other rather than adding up.
+            </p>
+
+            <h4>What it does not model</h4>
+            <ul>
+              <li>Walking and waiting inside the terminal, and the border process itself.</li>
+              <li>Weather, accidents, roadworks, or a closed lane.</li>
+              <li>Driver shifts, rest breaks and shift changes.</li>
+              <li>Competition with buses, the MTR or cross-border coaches.</li>
+            </ul>
+
+            <p class="how-foot">
+              The Python research model and this website run the same logic —
+              <code>tests/parity_check.py</code> checks that they agree.
+            </p>
+          </div>
+        </details>
+
       </aside>
 
       <main>
