@@ -1,5 +1,5 @@
 /**
- * UI shell: controls -> simulation -> 3D playback.
+ * UI shell: controls -> simulation -> pixel playback.
  *
  * Everything runs in the browser, so the site is a static bundle: no API, no
  * server, no cold start.  A 12-hour day simulates in ~50 ms.
@@ -132,6 +132,20 @@ const state = {
 };
 
 const scene = new PixelScene($("#scene"));
+
+// camera controls: the canvas is drag/scroll, but a visible affordance matters
+$("#camIn")?.addEventListener("click", () => scene.zoomBy(1.35));
+$("#camOut")?.addEventListener("click", () => scene.zoomBy(1 / 1.35));
+$("#camReset")?.addEventListener("click", () => {
+  scene.resetView();
+  sceneB?.resetView();
+});
+window.addEventListener("keydown", (e) => {
+  if (e.target.matches("input, select, textarea")) return;
+  if (e.key === "+" || e.key === "=") scene.zoomBy(1.3);
+  else if (e.key === "-" || e.key === "_") scene.zoomBy(1 / 1.3);
+  else if (e.key === "0") scene.resetView();
+});
 
 /* Auto-apply: a run costs 25-50 ms, so waiting for a button is friction.
    Debounced so dragging a slider does not queue dozens of runs. */
@@ -890,7 +904,7 @@ const TOUR = [
     title: "This is the taxi hall",
     text:
       "Empty taxis queue in the buffer on the left, passengers wait in three lanes, " +
-      "and the pickup bays are at the far end. Drag to orbit, pinch or scroll to zoom.",
+      "and the pickup bays are at the far end. Drag to look around, or use + to zoom in.",
     target: "#stage",
     sheet: false,
   },

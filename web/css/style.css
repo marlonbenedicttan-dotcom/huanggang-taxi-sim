@@ -1020,3 +1020,45 @@ main { background: var(--bg); }
 @media (max-width: 820px) {
   #camHint { font-size: 10px; left: 10px; top: 58px; padding: 5px 9px; }
 }
+
+/* ------------------------- camera controls ------------------------- */
+#camCtl {
+  position: absolute;
+  top: 62px;
+  right: 14px;
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 999px;
+  background: rgba(20, 28, 36, 0.55);
+  backdrop-filter: blur(8px);
+  box-shadow: 0 2px 10px rgba(20, 28, 36, 0.18);
+}
+#camCtl[hidden] { display: none; }
+#camCtl button {
+  width: 26px;
+  height: 26px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.92);
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+}
+#camCtl button:hover { background: rgba(255, 255, 255, 0.16); }
+#camCtl button:active { transform: scale(0.94); }
+#camLvl {
+  min-width: 38px;
+  text-align: center;
+  font: 600 10.5px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  color: rgba(255, 255, 255, 0.85);
+  font-variant-numeric: tabular-nums;
+}
+@media (max-width: 820px) {
+  /* the bottom of the stage sits behind the sheet on phones */
+  #camCtl { top: 58px; right: 10px; bottom: auto; }
+  #camHint { display: none; }
+}

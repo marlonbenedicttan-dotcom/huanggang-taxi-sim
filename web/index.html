@@ -66,7 +66,13 @@
           <canvas id="scene"></canvas>
           <canvas id="sceneB" hidden></canvas>
           <div id="zoneLabels" aria-hidden="true"></div>
-          <div id="camHint">Drag to look around · scroll or pinch to zoom · double-click to reset</div>
+          <div id="camCtl" hidden>
+            <button id="camOut" title="Zoom out" aria-label="Zoom out">−</button>
+            <span id="camLvl">100%</span>
+            <button id="camIn" title="Zoom in" aria-label="Zoom in">+</button>
+            <button id="camReset" title="Reset view" aria-label="Reset view">⟲</button>
+          </div>
+          <div id="camHint">Drag to look around · scroll or pinch to zoom</div>
           <div id="tagA" class="stage-tag" hidden>A · Current process</div>
           <div id="tagB" class="stage-tag" hidden>B · Your proposal</div>
         </div>

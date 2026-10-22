@@ -96,6 +96,7 @@ export class PixelScene {
     this.labelEls = null;
     this.metaFrame = null;
     this.meta = null;
+    this.bays = [];
 
     // viewport camera over the finished buffer: pan and zoom are pure blits,
     // so the world keeps its authored pixel size at every zoom level
@@ -153,14 +154,26 @@ export class PixelScene {
     c.style.cursor = "grab";
     c.style.touchAction = "none";
 
-    c.addEventListener("wheel", (e) => {
-      e.preventDefault();
-      const before = toBuffer(e.clientX, e.clientY);
-      this.cam.zoom = clamp(this.cam.zoom * Math.exp(-e.deltaY * 0.0016), 1, 4);
-      const after = toBuffer(e.clientX, e.clientY);
+    this._screenToBuffer = (px, py) => {
+      const r = this._viewRect();
+      const k = this.scale * this.cam.zoom;
+      return { x: r.x + (px - this.offX) / k, y: r.y + (py - this.offY) / k };
+    };
+    this._zoomAt = (clientX, clientY, factor) => {
+      const rect = c.getBoundingClientRect();
+      const px = (clientX - rect.left) * (c.width / rect.width);
+      const py = (clientY - rect.top) * (c.height / rect.height);
+      const before = this._screenToBuffer(px, py);
+      this.cam.zoom = clamp(this.cam.zoom * factor, 1, 4);
+      const after = this._screenToBuffer(px, py);
       this.cam.x += before.x - after.x;
       this.cam.y += before.y - after.y;
       this._clampCam();
+    };
+
+    c.addEventListener("wheel", (e) => {
+      e.preventDefault();
+      this._zoomAt(e.clientX, e.clientY, Math.exp(-e.deltaY * 0.0016));
     }, { passive: false });
 
     c.addEventListener("pointerdown", (e) => {
@@ -215,7 +228,10 @@ export class PixelScene {
     c.addEventListener("pointerup", end);
     c.addEventListener("pointercancel", end);
 
-    c.addEventListener("dblclick", () => this.resetView());
+    // double-click dives into the point you clicked; the ⟲ button resets
+    c.addEventListener("dblclick", (e) => {
+      this._zoomAt(e.clientX, e.clientY, e.shiftKey ? 1 / 1.6 : 1.6);
+    });
   }
 
   /** Visible window into the buffer, centred on the camera. */
@@ -236,6 +252,12 @@ export class PixelScene {
     const hy = H / (2 * z);
     this.cam.x = this._clamp(this.cam.x, wx, W - wx);
     this.cam.y = this._clamp(this.cam.y, hy, H - hy);
+  }
+
+  /** Zoom about the middle of the canvas (what the +/− buttons call). */
+  zoomBy(factor) {
+    const r = this.canvas.getBoundingClientRect();
+    this._zoomAt?.(r.left + r.width / 2, r.top + r.height / 2, factor);
   }
 
   resetView() {
@@ -360,10 +382,10 @@ export class PixelScene {
       // brick pattern: every other row is offset half a slot, so the queue
       // reads as a loose crowd instead of a grid of identical figures
       const stagger = row % 2 ? 0.4 : 0;
-      const qx = 13.4 + col * 0.8 + stagger + layer * 0.16;
-      const qz = LANES[CLS[clsId]] + [-2.05, -0.68, 0.68, 2.05][row] + layer * 0.10;
-      const jx = (((id * 37) % 17) / 17 - 0.5) * 0.26;
-      const jz = (((id * 53) % 19) / 19 - 0.5) * 0.30;
+      const qx = 13.4 + col * 0.8 + stagger + layer * 0.42;
+      const qz = LANES[CLS[clsId]] + [-2.05, -0.68, 0.68, 2.05][row] - layer * 0.5;
+      const jx = (((id * 37) % 17) / 17 - 0.5) * 0.16;
+      const jz = (((id * 53) % 19) / 19 - 0.5) * 0.16;
       let e = this.people.get(id);
       if (!e) {
         const [dx, dz] = doorPos(clsId);
@@ -377,6 +399,7 @@ export class PixelScene {
       }
       e.tx = qx + jx;
       e.tz = qz + jz;
+      e.layer = layer;
     }
 
     for (const [id, e] of this.people) {
@@ -407,8 +430,8 @@ export class PixelScene {
     const k = slot % 48;
     const col = k % 12, row = Math.floor(k / 12);
     return [
-      13.4 + col * 0.8 + (row % 2 ? 0.4 : 0) + layer * 0.16,
-      LANES[CLS[clsId]] + [-2.05, -0.68, 0.68, 2.05][row] + layer * 0.10,
+      13.4 + col * 0.8 + (row % 2 ? 0.4 : 0) + layer * 0.42,
+      LANES[CLS[clsId]] + [-2.05, -0.68, 0.68, 2.05][row] - layer * 0.5,
     ];
   }
 
@@ -487,24 +510,36 @@ export class PixelScene {
   _updateLabels() {
     if (!this.labelEls || !this.metaFrame) return;
     const f = this.metaFrame;
+    const r = this._viewRect();
+
+    // a counter anchored to something the camera has panned off-screen must
+    // disappear, otherwise it floats over the sidebar in stage coordinates
+    const inView = (wx, wz) => {
+      const bx = X(wx);
+      const by = Z(wz) - 1.7 * 13;
+      return bx > r.x - 12 && bx < r.x + r.w + 12 && by > r.y - 12 && by < r.y + r.h + 12;
+    };
+
     let worst = 0;
     for (let c = 1; c < 3; c++) if (f.q[c] > f.q[worst]) worst = c;
+
     for (let c = 0; c < 3; c++) {
       const el = this.labelEls[c];
       const [wx, wz] = this._queueSlot(c, Math.min(6, Math.max(0, f.q[c] - 1)));
       const p = this.project(wx, 1.7, wz);
       const n = f.q[c];
-      el.classList.toggle("hidden", n === 0);
+      el.classList.toggle("hidden", n === 0 || !inView(wx, wz));
       el.classList.toggle("worst", c === worst && n > 6);
       el.innerHTML = `<b>${n}</b> waiting`;
       el.style.transform = `translate(${p.x}px, ${p.y}px) translate(-50%, -100%)`;
     }
+
     const buf = this.labelEls[3];
     const [bx, bz] = bufferPos(0, 10);
     const pb = this.project(bx, 1.7, bz);
     buf.innerHTML = `<b>${f.buf}</b> taxis`;
     buf.style.transform = `translate(${pb.x}px, ${pb.y}px) translate(-50%, -100%)`;
-    buf.classList.remove("hidden");
+    buf.classList.toggle("hidden", !inView(bx, bz));
   }
 
   /* ================================================================== *
@@ -512,6 +547,12 @@ export class PixelScene {
    * ================================================================== */
   render() {
     this._applyView();          // compare view: panels have different sizes
+    if (this.canvas.id === "scene") {
+      const ctl = document.getElementById("camCtl");
+      if (ctl && ctl.hidden) ctl.hidden = false;
+      const lvl = document.getElementById("camLvl");
+      if (lvl) lvl.textContent = `${Math.round(this.cam.zoom * 100)}%`;
+    }
     const g = this.g;
     g.clearRect(0, 0, W, H);
 
@@ -644,7 +685,7 @@ export class PixelScene {
       }
       // the queue pad itself is a shade lighter than the lane
       g.fillStyle = "rgba(255,255,255,0.05)";
-      g.fillRect(X(13.2), Z(z - 2.3), X(23.2) - X(13.2), Z(z + 2.3) - Z(z - 2.3));
+      g.fillRect(X(13.2), Z(z - 2.7), X(23.6) - X(13.2), Z(z + 2.3) - Z(z - 2.7));
     }
 
     // bay pads + numbers
@@ -956,9 +997,10 @@ export class PixelScene {
     const f = moving ? 1 + (Math.floor(this.time * 7 + (e.seed || 0)) % 2) : 0;
     const spr = frames[Math.min(f, frames.length - 1)];
 
-    this._shadow(x, y + 1, 3, 0.13);
+    this._shadow(x, y + 1, 3, 0.11);
     g.save();
     if (e.fade != null) g.globalAlpha = Math.max(0, e.fade);
+    else if (e.layer) g.globalAlpha = Math.max(0.55, 1 - e.layer * 0.14);
     if (e.face < 0) {
       g.translate(Math.round(x), Math.round(y));
       g.scale(-1, 1);

@@ -98,14 +98,12 @@ const PERSON_TOP = [
   ".fff.",
   ".ccc.",
   "ccccc",
-  "c.c.c",
 ];
 
-/** Three leg poses; the walk cycle alternates A and C with B as the rest pose. */
 const PERSON_LEGS = [
+  [".k.k.", ".s.s."],
   ["..kk.", ".ss.s"],
-  [".kk..", ".s.s."],
-  [".kk.k", "ss..s"],
+  ["k...k", "s...s"],
 ];
 
 function personFrames(shirt) {
