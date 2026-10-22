@@ -59,8 +59,8 @@ const GROUPS = [
   {
     name: "Driver incentives",
     items: [
-      { key: "backhaulMatch", label: "Trips with a guaranteed ride back", min: 0, max: 1, step: 0.05, pct: true,
-        hint: "Share of port pickups where a return passenger is matched before the taxi arrives. Removes the fear of an empty drive back — the reason many drivers skip the port." },
+      { key: "backhaulMatch", label: "Drop-offs with a return booking", min: 0, max: 1, step: 0.05, pct: true,
+        hint: "Share of taxis that drop a passenger at the port and leave with a booked trip back to town, instead of driving home empty. Booked trips use their own stand." },
       { key: "portSurchargeHkd", label: "Extra charge on trips from the port", min: 0, max: 50, step: 5, unit: "HKD",
         hint: "A regulated surcharge added to fares leaving the port. Raises what the trip is worth, so more drivers come. The cost lands on the passenger." },
       { key: "waitAllowanceHkd", label: "Paid for each minute waiting", min: 0, max: 4, step: 0.5, unit: "HKD/min",
@@ -143,15 +143,15 @@ const PRESETS = {
     backhaulMatch: 0, portSurchargeHkd: 0, waitAllowanceHkd: 0,
     ticketDelayMin: 8, infoShare: 0, nightMinTaxis: 0,
   },
-  // ticket + cross-boundary quota: 20.3 -> 3.2 min, and the only two levers
-  // that pay for themselves. Verified with 30 replications; see README.
+  // return matching + digital ticket: 20 -> 4 min (30 replications, both
+  // engines agree within their confidence intervals). See README.
   recommended: {
     paxPerHour: 550, urbanShare: 0.75, prebookShare: 0.1,
-    taxiSupplyRatioUrban: 1.575, taxiSupplyRatioNt: 1.425, flexShare: 0,
+    taxiSupplyRatioUrban: 1.05, taxiSupplyRatioNt: 0.95, flexShare: 0,
     "stands.urban": 8, "stands.nt": 3, "stands.prebook": 2, service: 1.5, bufferCapacity: 40,
     dispatchIntervalMin: 1, dispatchBatch: 8, misrouteProb: 0.06,
     appShare: 0, pooledStands: false, patienceMeanMin: 35,
-    backhaulMatch: 0, portSurchargeHkd: 0, waitAllowanceHkd: 0,
+    backhaulMatch: 0.8, portSurchargeHkd: 0, waitAllowanceHkd: 0,
     ticketDelayMin: 1.5, infoShare: 0, nightMinTaxis: 0,
   },
   smart: {
@@ -961,19 +961,20 @@ const CARDS = [
       "away are the ones that would have arrived just before a queue formed.",
   },
   {
-    label: "Taxis can take someone back",
+    label: "Book the trip back",
     icon: "route",
-    cost: { capital: 0, years: 1, annual: 0, kind: "licensing" },
-    pilot: { metric: "taxis per hour arriving loaded vs empty", weeks: 12 },
-    on: { taxiSupplyRatioUrban: 1.575, taxiSupplyRatioNt: 1.425 },
-    off: { taxiSupplyRatioUrban: 1.05, taxiSupplyRatioNt: 0.95 },
-    isOn: (v) => Number(v.taxiSupplyRatioUrban) > 1.3,
+    cost: { capital: 1.2e6, years: 5, annual: 1.5e5, kind: "software" },
+    pilot: { metric: "share of port drop-offs with a return booking", weeks: 6 },
+    on: { backhaulMatch: 0.8 },
+    off: { backhaulMatch: 0 },
+    isOn: (v) => Number(v.backhaulMatch) > 0.3,
     note:
-      "A cross-border taxi drops its passenger at the port and then drives home " +
-      "empty, so nobody pays for that trip. A quota lets the same taxi pick up a " +
-      "passenger going the other way: both legs are paid, and far more drivers come. " +
-      "The biggest single win after the ticket — but Hong Kong and Shenzhen have to " +
-      "agree it.",
+      "A passenger arriving from Shenzhen can book a Hong Kong taxi before clearing " +
+      "immigration. The booking goes to a taxi that has just dropped someone off, so " +
+      "the driver knows the return leg is paid before deciding to come. Booked trips " +
+      "use the pre-booked stand, so the walk-up queue is not pushed back. No new cars, " +
+      "no new licence, and no agreement with Shenzhen — it is a repositioning fix. " +
+      "The model assumes 8 in 10 drop-offs can be matched this way.",
   },
   {
     label: "More pre-booked trips, with stands",

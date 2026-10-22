@@ -248,11 +248,13 @@ This table doubles as your data-collection plan.
 Every policy above acts *inside* the port. None of them help if taxis do not
 turn up — and the reason drivers skip Huanggang is the **return leg**: a taxi
 that takes a fare to the port has no guaranteed fare back, so the trip is worth
-less than an hour in the city. Three supply-side instruments are modelled:
+less than an hour in the city. This is a repositioning problem, not a licensing
+one: the taxi stays on the Hong Kong side and needs a passenger heading back
+into town. Three supply-side instruments are modelled:
 
 | Policy | Parameter | What the model assumes it does |
 |---|---|---|
-| Guaranteed return fare | `backhaul_match` 0–1 | the port matches a return passenger before the taxi arrives |
+| Return-trip booking | `backhaul_match` 0–1 | an arriving passenger books a Hong Kong taxi before clearing immigration; the booking goes to a taxi that has just dropped off, so the return leg is paid |
 | Port pickup surcharge | `port_surcharge_hkd` 0–50 | a regulated extra fare on trips leaving the port |
 | Waiting-time allowance | `wait_allowance_hkd` 0–4 | paid per minute spent queueing at the port |
 
@@ -332,6 +334,34 @@ policies are each worth about **1.3 minutes**:
 
 This is why the policy cards show almost nothing until you switch the ticket on.
 
+### The return leg: a booking, not a border quota
+
+The taxi never crosses the boundary. It drops a passenger at Huanggang and needs
+someone going back into Hong Kong. A cross-border quota would let Hong Kong
+taxis pick up *inside* Shenzhen — a different policy, for a different regulator,
+requiring a bilateral agreement. It would not fill the empty Hong Kong-bound
+leg, and the model never simulated it: the old card was a +50% supply
+multiplier with a border story attached.
+
+What the model does simulate is the share of drop-offs that leave with a booked
+trip back. A passenger arriving from Shenzhen books a Hong Kong taxi before
+clearing immigration; the booking goes to a taxi that has just dropped off, and
+it uses its own stand, so the walk-up queue is untouched. That is a
+repositioning fix: the same car, already at the port, leaves loaded.
+
+| | Mean wait | Gave up |
+|---|---|---|
+| today | 19.1 min | 18.4% |
+| digital ticket only | 8.8 min | 4.7% |
+| return booking only | 5.9 min | 1.2% |
+| **both** | **3.6 min** | **0.1%** |
+
+Thirty replications of `BASE`, seeds 1–30. The browser engine gives 19.6, 9.4,
+6.3 and 4.2 for the same rows, inside the confidence intervals reported by
+`tests/parity_check.py`. The booking's effect is a modelling assumption (the
+supply response is illustrative), so treat the size as an upper bound and the
+direction as the finding.
+
 ### Sensitivity: which assumptions matter
 
 Twenty replications per point, swinging each assumption around the current
@@ -359,7 +389,7 @@ response. Boarding time barely matters: the stands are not the constraint.
 | Digital queue ticket | yes — the live issue, and what the trade asked for |
 | App / fleet pre-registration | yes — fleet taxis are already bookable |
 | Two extra stands | capital works; the PTI layout is fixed as built |
-| Guaranteed return fare | no — the walk-up rank is first-come-first-served |
+| Return-trip booking | yes — booked trips use their own stand, so the walk-up queue is untouched |
 | Port pickup surcharge | no — HK fares are uniform by meter, no location surcharge |
 | Flexible taxis | no — green taxis stay licensed for NT destinations |
 | Pooled pickup bays | no — red and green have separate stands by licence |
