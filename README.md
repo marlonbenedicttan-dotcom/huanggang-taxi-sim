@@ -227,9 +227,45 @@ This table doubles as your data-collection plan.
 | `patience_mean_min` | 35 | how long before a passenger gives up | Short exit interviews / count reneges |
 | `taxi_patience_mean_min` | 45 | how long an empty taxi waits before leaving | Follow 20 taxis in the buffer |
 | `recirc_min` / `recirc_max` | 8 / 20 | time lost circulating | Follow a redirected taxi |
+| `loaded_share` | 0.50 | share of taxi visits that arrive with a passenger | Count drop-offs vs empty arrivals (ANPR or 1 hour on the approach) |
+| `return_pickup_today` | 0.40 | drop-offs that take a fare back today | Count rank joins after a drop-off; or ask 20 drivers |
+| `queue_threshold` / `queue_aversion` | 0.50 / 0.70 | how full the buffer gets before drivers skip it | Count taxis entering vs passing by at a busy hour |
+| `port_dwell_min` | 25.5 | time from arrival to leaving with a fare | Time 20 taxis end to end |
+| `ticket_delay_min` | 8.0 | driver time lost at the ticket point | Trade report, or stopwatch 20 taxis |
+| `prebook_supply_ratio` | 1.15 | fleet headroom over bookings | Booking-system logs |
 
 `demand_profile` (24 hourly multipliers) and `nt_shift_hours` shape the peaks;
 `supply_flatness` controls how badly taxi supply follows demand.
+
+### The default setup — and how much the answer depends on it
+
+With no field data yet, the defaults describe a *congested but plausible* port:
+550 walk-up passengers an hour, 1.3 per taxi, 8 urban / 3 NT stands, a 25.5-minute
+taxi visit and an 8-minute paper ticket. The supply level is anchored to the
+observed empty-taxi flow (1.05 urban, 0.95 NT), so the baseline reproduces the
+port's current state rather than an assumed one.
+
+Four numbers are behavioural assumptions rather than counts: the loaded share
+(0.50), today's return pickup (0.40), the busy-rank threshold (0.50) and the
+turn-away share (0.70). `experiments/uncertainty.py` swings each to a plausible
+low/high value, 30 seeds per point:
+
+| Assumption | Low | High | Recommended wait |
+|---|---|---|---|
+| Loaded share | 0.35 | 0.65 | 6.6 → 4.2 min |
+| Return pickup today | 0.25 | 0.55 | 4.0 → 6.7 min |
+| Drivers skipping a busy rank | 0.40 | 0.90 | 5.4 → 5.3 min |
+| Passenger patience | 25 | 45 min | 4.4 → 5.9 min |
+| Taxi patience | 30 | 60 min | 5.3 → 5.3 min |
+
+Across every behavioural swing the package lands between **4.0 and 6.7
+minutes**, and it remains better than either single policy in every case. The
+physical drivers dominate: demand (440–660 pax/h) moves it from 0.4 to 14.6
+minutes and boarding time (1.2–1.8 min) from 2.2 to 12.4. That is expected —
+those are the constraints, not the policy.
+
+When you have even one measurement, put it in `config_site.json` (see
+`config_site.example.json`) and rerun; the uncertainty range narrows.
 
 ## 4. The policies tested
 
