@@ -662,13 +662,16 @@ export class Simulation {
         }
         case EV.GIVEUP: {
           const tx = a;
-          if (tx.state === 0 || tx.state === 1) {
+          if (tx.state === 0) {
             tx.state = 5;
             const lane = tx.flex ? this.flexBuf : this.buf[tx.cls];
-            let i = lane.indexOf(tx);
+            const i = lane.indexOf(tx);
             if (i >= 0) lane.splice(i, 1);
+            if (tx.tFirst >= this.warm) this.taxiLeftEmpty++;
+          } else if (tx.state === 1) {
+            tx.state = 5;
             const sq = this.stand[tx.cls];
-            i = sq.indexOf(tx);
+            const i = sq ? sq.indexOf(tx) : -1;
             if (i >= 0) sq.splice(i, 1);
             if (tx.tFirst >= this.warm) this.taxiLeftEmpty++;
           }

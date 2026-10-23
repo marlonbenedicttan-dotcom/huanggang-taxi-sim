@@ -691,16 +691,20 @@ class Simulation:
                 tx = payload
                 # patience applies wherever the taxi is waiting: in the buffer
                 # or already queued behind the stands
-                if tx.status in ("buffer", "stand"):
+                if tx.status == "buffer":
                     tx.status = "left"
                     lane = self.flex_buf if tx.flex else self.buf[tx.cls]
                     try:
                         lane.remove(tx)
                     except ValueError:
                         pass
+                    if tx.t_first >= warm:
+                        self.taxi_left_empty += 1
+                elif tx.status == "stand":
+                    tx.status = "left"
                     try:
                         self.stand[tx.cls].remove(tx)
-                    except ValueError:
+                    except (ValueError, KeyError):
                         pass
                     if tx.t_first >= warm:
                         self.taxi_left_empty += 1
