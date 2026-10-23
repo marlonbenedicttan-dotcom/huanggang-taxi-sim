@@ -385,7 +385,9 @@ This is why the policy cards show almost nothing until you switch the ticket on.
 ### Drivers react to the rank
 
 Above half of a lane's buffer capacity, 70% of arriving taxis turn away rather
-than queue. Without this the rank fills to its physical limit and stays there:
+than queue. A taxi with a booking is exempt: it still has to wait, but it knows
+the trip is paid, so it joins the rank regardless. Without this feedback the
+rank fills to its physical limit and stays there:
 with the policy on, the standing pool sat at ~105 taxis. With the feedback it
 is ~66, and 1,249 of the day's visits are turned away in the 30-seed runs.
 
@@ -533,9 +535,11 @@ comparison printed at the end of every run.
 * **Common random numbers.** All scenarios use the same seed list, so the
   comparison is paired and much less noisy.
 * **Analytical validation.** With taxis made unlimited and all frictions
-  switched off, the pickup bays become a pure M/M/c queue. The engine reproduces
-  the Erlang-C mean wait to within a few percent across the load range, and to
-  within 1–3% near saturation (`results/validation_mmc.csv`, Fig. 6).
+  switched off, the pickup bays become a pure M/M/c queue. The engine's point
+  estimates sit within about 10% of the Erlang-C mean at every load, and every
+  95% interval covers the analytical value — including at 94% utilisation, where
+  a single replication is noisy by construction (`results/validation_mmc.csv`,
+  Fig. 6).
 * **Little's law.** For every replication, `L = λ_served·W_served +
   λ_abandoned·W_abandoned` is checked against the simulated time-average queue
   length; the gap is reported as `little_gap_pct` (typically < 2%).
