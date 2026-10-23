@@ -5,13 +5,13 @@ The port's supply problem is a return-leg problem: a taxi that takes a fare to
 Huanggang has no guaranteed fare back, so drivers skip it. Three policies are
 modelled here as ways to raise the expected value of a port trip:
 
-    backhaul_match      0-1     share of port trips with a return fare matched
+    return_pickup       0-1     share of drop-offs that take a fare back
     port_surcharge_hkd  0-50    regulated extra fare on port pickups
     wait_allowance_hkd  0-4     paid per minute spent queueing
 
 Supply response (both engines):
 
-    supply = base_ratio * (1 + 0.35*backhaul + 0.45*(surcharge/50) + 0.30*(allowance/4))
+    supply = base_ratio / pickup_today * pickup_share * ticket * incentive
 
 THE COEFFICIENTS ARE ILLUSTRATIVE, NOT MEASURED. Nobody has published a
 driver supply elasticity for this port, so the numbers below answer "what does
@@ -46,10 +46,10 @@ def main():
     base, se = wait()
     print(f"baseline (550 pax/h, no incentives): {base:.2f} +- {se:.2f} min\n")
 
-    print("guaranteed return fare")
-    for bh in (0.2, 0.4, 0.6, 0.8, 1.0):
-        m, s = wait(backhaul_match=bh)
-        print(f"  {bh * 100:>3.0f}% of trips matched   {m:5.2f} min   {m - base:+5.2f}")
+    print("taking a fare back")
+    for bh in (0.4, 0.55, 0.7, 0.85, 1.0):
+        m, s = wait(return_pickup=bh)
+        print(f"  {bh * 100:>3.0f}% of drop-offs       {m:5.2f} min   {m - base:+5.2f}")
 
     print("\nport pickup surcharge")
     for sc in (10, 20, 30, 40, 50):
@@ -61,7 +61,7 @@ def main():
         m, _ = wait(wait_allowance_hkd=wa)
         print(f"  {wa:>2} HKD/min              {m:5.2f} min   {m - base:+5.2f}")
 
-    m, s = wait(backhaul_match=0.7, port_surcharge_hkd=30, wait_allowance_hkd=2)
+    m, s = wait(return_pickup=0.7, port_surcharge_hkd=30, wait_allowance_hkd=2)
     print(f"\nall three at once: {m:.2f} +- {s:.2f} min   {m - base:+5.2f}")
     print("  -> stacking them buys almost nothing over the best single policy")
 

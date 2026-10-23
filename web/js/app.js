@@ -59,8 +59,8 @@ const GROUPS = [
   {
     name: "Driver incentives",
     items: [
-      { key: "backhaulMatch", label: "Drop-offs with a return booking", min: 0, max: 1, step: 0.05, pct: true,
-        hint: "Share of taxis that drop a passenger at the port and leave with a booked trip back to town, instead of driving home empty. Booked trips use their own stand." },
+      { key: "returnPickup", label: "Drop-offs that take a fare back", min: 0.2, max: 1, step: 0.05, pct: true,
+        hint: "Share of taxis that drop a passenger at the port and take someone back into Hong Kong instead of driving home empty. Today about 4 in 10 do; booking raises it." },
       { key: "portSurchargeHkd", label: "Extra charge on trips from the port", min: 0, max: 50, step: 5, unit: "HKD",
         hint: "A regulated surcharge added to fares leaving the port. Raises what the trip is worth, so more drivers come. The cost lands on the passenger." },
       { key: "waitAllowanceHkd", label: "Paid for each minute waiting", min: 0, max: 4, step: 0.5, unit: "HKD/min",
@@ -107,7 +107,7 @@ const GROUPS = [
 const POLICY_KEYS = [
   "dispatchIntervalMin", "dispatchBatch", "pooledStands", "appShare",
   "flexShare", "misrouteProb", "stands.urban", "stands.nt", "taxiSupplyRatioNt",
-  "backhaulMatch", "portSurchargeHkd", "waitAllowanceHkd", "ticketDelayMin",
+  "returnPickup", "portSurchargeHkd", "waitAllowanceHkd", "ticketDelayMin",
   "infoShare", "nightMinTaxis",
 ];
 
@@ -140,7 +140,7 @@ const PRESETS = {
     "stands.urban": 8, "stands.nt": 3, "stands.prebook": 2, service: 1.5, bufferCapacity: 40,
     dispatchIntervalMin: 1, dispatchBatch: 8, misrouteProb: 0.06,
     appShare: 0, pooledStands: false, patienceMeanMin: 35,
-    backhaulMatch: 0, portSurchargeHkd: 0, waitAllowanceHkd: 0,
+    returnPickup: 0.4, portSurchargeHkd: 0, waitAllowanceHkd: 0,
     ticketDelayMin: 8, infoShare: 0, nightMinTaxis: 0,
   },
   // return booking + digital ticket: 20 -> 4 min (30 replications, both
@@ -151,7 +151,7 @@ const PRESETS = {
     "stands.urban": 8, "stands.nt": 3, "stands.prebook": 2, service: 1.5, bufferCapacity: 40,
     dispatchIntervalMin: 1, dispatchBatch: 8, misrouteProb: 0.06,
     appShare: 0, pooledStands: false, patienceMeanMin: 35,
-    backhaulMatch: 0.8, portSurchargeHkd: 0, waitAllowanceHkd: 0,
+    returnPickup: 0.8, portSurchargeHkd: 0, waitAllowanceHkd: 0,
     ticketDelayMin: 1.5, infoShare: 0, nightMinTaxis: 0,
   },
   smart: {
@@ -160,7 +160,7 @@ const PRESETS = {
     "stands.urban": 10, "stands.nt": 4, "stands.prebook": 2, service: 1.5, bufferCapacity: 40,
     dispatchIntervalMin: 1, dispatchBatch: 8, misrouteProb: 0.06,
     appShare: 0, pooledStands: false, patienceMeanMin: 35,
-    backhaulMatch: 0.8, portSurchargeHkd: 0, waitAllowanceHkd: 0,
+    returnPickup: 0.8, portSurchargeHkd: 0, waitAllowanceHkd: 0,
     ticketDelayMin: 1.5, infoShare: 0.6, nightMinTaxis: 0,
   },
 };
@@ -436,7 +436,7 @@ function buildConfig(vals = state.values) {
     nightMinTaxis: valueOf("nightMinTaxis"),
     portDwellMin: 25.5,
     prebookStands: Math.round(valueOf("stands.prebook")),
-    backhaulMatch: valueOf("backhaulMatch"),
+    returnPickup: valueOf("returnPickup"),
     portSurchargeHkd: valueOf("portSurchargeHkd"),
     waitAllowanceHkd: valueOf("waitAllowanceHkd"),
     pooledStands: !!valueOf("pooledStands"),
@@ -992,9 +992,9 @@ const CARDS = [
     icon: "route",
     cost: { capital: 1.2e6, years: 5, annual: 1.5e5, kind: "software" },
     pilot: { metric: "share of port drop-offs with a return booking", weeks: 6 },
-    on: { backhaulMatch: 0.8 },
-    off: { backhaulMatch: 0 },
-    isOn: (v) => Number(v.backhaulMatch) > 0.3,
+    on: { returnPickup: 0.8 },
+    off: { returnPickup: 0.4 },
+    isOn: (v) => Number(v.returnPickup) > 0.55,
     note:
       "A passenger arriving from Shenzhen can book a Hong Kong taxi before clearing " +
       "immigration. The booking goes to a taxi that has just dropped someone off, so " +

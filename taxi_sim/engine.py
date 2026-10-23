@@ -84,8 +84,12 @@ class Config:
     # gamble, so drivers skip the port. These policies raise the expected
     # value of the trip and therefore the supply that turns up. The
     # coefficients below are illustrative, not measured (see README).
-    backhaul_match: float = 0.0             # 0-1: share of trips with a matched return fare
-    backhaul_supply_response: float = 0.35  # extra supply per unit of matching (conservative)
+    # A port visit arrives either loaded (dropping a passenger who is going to
+    # Shenzhen) or empty. A loaded taxi then decides whether to take a fare
+    # back into Hong Kong; that decision is the repositioning policy.
+    loaded_share: float = 0.50         # share of taxi visits that arrive loaded
+    return_pickup_today: float = 0.40  # share of drop-offs that take a fare back today
+    return_pickup: float = 0.40        # policy value (0-1)
     port_surcharge_hkd: float = 0.0         # regulated extra fare on port pickups
     wait_allowance_hkd: float = 0.0         # paid per minute waiting in the queue
     # ---- queue-ticket regime (new Huanggang Port, 2026) -----------------
@@ -277,19 +281,23 @@ class Simulation:
             "nt": parties * (1 - cfg.prebook_share) * (1 - cfg.urban_share),
             "prebook": parties * cfg.prebook_share,
         }
-        incentive = (
+        # How many of the taxis that come actually end up picking someone up.
+        pickup_today = (1 - cfg.loaded_share) + cfg.loaded_share * cfg.return_pickup_today
+        self.pickup_share = (1 - cfg.loaded_share) + cfg.loaded_share * cfg.return_pickup
+
+        # a driver's visit now costs dwell + ticket time instead of dwell
+        ticket = cfg.port_dwell_min / max(1.0, cfg.port_dwell_min + cfg.ticket_delay_min)
+        incentive = ticket * (
             1.0
-            + cfg.backhaul_supply_response * cfg.backhaul_match
             + 0.45 * (cfg.port_surcharge_hkd / 50.0)
             + 0.30 * (cfg.wait_allowance_hkd / 4.0)
         )
-        # a driver's visit now costs dwell + ticket time instead of dwell
-        ticket = cfg.port_dwell_min / max(1.0, cfg.port_dwell_min + cfg.ticket_delay_min)
-        incentive *= ticket
+        # visits are what arrives at the kerb; pickup_share turns them into
+        # available taxis. Anchoring on today's rate keeps the baseline level.
         self.supply_ratio = {
-            "urban": cfg.taxi_supply_ratio_urban * incentive,
-            "nt": cfg.taxi_supply_ratio_nt * incentive,
-            "prebook": cfg.prebook_supply_ratio,
+            "urban": cfg.taxi_supply_ratio_urban / max(pickup_today, 1e-6) * incentive,
+            "nt": cfg.taxi_supply_ratio_nt / max(pickup_today, 1e-6) * incentive,
+            "prebook": cfg.prebook_supply_ratio,   # fleet taxis are scheduled, not deterred by the ticket
         }
         # empty-taxi flow is anchored to the observed demand level
         supply_parties = cfg.taxi_supply_basis_pax / cfg.party_size
@@ -306,7 +314,10 @@ class Simulation:
         self.pax_arrived = 0
         self.pax_served = 0
         self.pax_abandoned = 0
-        self.taxi_arrived = 0
+        self.taxi_arrived = 0      # visits at the kerb (loaded + empty)
+        self.taxi_loaded = 0       # visits that brought a passenger
+        self.taxi_declined = 0     # drop-offs that went back empty
+        self.taxi_entered = 0      # taxis that joined the rank
         self.taxi_served = 0
         self.taxi_left_empty = 0
         self.misroutes = 0
@@ -542,7 +553,7 @@ class Simulation:
         else:
             self.buf[cls].append(tx)
         if t_first >= self.cfg.warm_min:
-            self.taxi_arrived += 1
+            self.taxi_entered += 1
         # driver gives up if not called forward in time
         if cfg.taxi_patience_mean_min < float("inf"):
             patience = _lognormal(
@@ -590,6 +601,18 @@ class Simulation:
 
             elif kind == "TAXI":
                 cls, t_first, flex = payload
+                if t_first >= warm:
+                    self.taxi_arrived += 1
+                # a drop-off may take a fare back (the policy) or deadhead
+                if ((cls in POOL_CLASSES or flex) and
+                        self.rng.random() < cfg.loaded_share):
+                    if t_first >= warm:
+                        self.taxi_loaded += 1
+                    if self.rng.random() >= cfg.return_pickup:
+                        if t_first >= warm:
+                            self.taxi_declined += 1
+                            self.taxi_left_empty += 1
+                        continue
                 if (
                     cfg.info_share > 0
                     and len(self.pq[cls]) < 6
@@ -740,6 +763,10 @@ class Simulation:
             "little_gap_pct": 100.0 * (l_time - l_law) / max(l_law, 1e-9),
             # ---- taxi side ------------------------------------------
             "taxi_arrived": self.taxi_arrived,
+            "taxi_loaded": self.taxi_loaded,
+            "taxi_declined": self.taxi_declined,
+            "taxi_entered": self.taxi_entered,
+            "empty_return_pct": 100.0 * self.taxi_declined / max(self.taxi_loaded, 1),
             "taxi_served": self.taxi_served,
             "taxi_left_empty": self.taxi_left_empty,
             "taxi_diverted": self.taxi_diverted,

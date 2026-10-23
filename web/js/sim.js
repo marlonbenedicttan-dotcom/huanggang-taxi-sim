@@ -67,11 +67,12 @@ export const DEFAULTS = {
   taxiSupplyBasisPax: 550,
   taxiSupplyRatioUrban: 1.05,
   taxiSupplyRatioNt: 0.95,
-  // driver incentives: each raises the expected value of a port trip, which
-  // raises how many empty taxis choose to come. Coefficients are illustrative
-  // (see README "what the incentives actually assume").
-  backhaulMatch: 0,
-  backhaulSupplyResponse: 0.35,
+  // A port visit arrives loaded (dropping someone going to Shenzhen) or empty.
+  // A loaded taxi then decides whether to take a fare back into Hong Kong;
+  // that decision is the repositioning policy.
+  loadedShare: 0.5,
+  returnPickupToday: 0.4,
+  returnPickup: 0.4,
   portSurchargeHkd: 0,
   waitAllowanceHkd: 0,
   // queue-ticket regime: paper ticket at the buffer costs the driver ~8 min
@@ -217,7 +218,10 @@ export class Simulation {
     this.paxArrived = 0;
     this.paxServed = 0;
     this.paxAbandoned = 0;
-    this.taxiArrived = 0;
+    this.taxiArrived = 0;    // visits at the kerb (loaded + empty)
+    this.taxiLoaded = 0;
+    this.taxiDeclined = 0;
+    this.taxiEntered = 0;
     this.taxiServed = 0;
     this.taxiLeftEmpty = 0;
     this.misroutes = 0;
@@ -294,21 +298,24 @@ export class Simulation {
       nt: supplyParties * (1 - cfg.prebookShare) * (1 - cfg.urbanShare),
       prebook: supplyParties * cfg.prebookShare,
     };
-    // A port trip is worth less than a city trip while the return leg is a
-    // gamble. These policies raise that value, so more drivers accept the run.
-    let incentive =
-      1 +
-      (cfg.backhaulSupplyResponse ?? 0.35) * (cfg.backhaulMatch || 0) +
-      0.45 * ((cfg.portSurchargeHkd || 0) / 50) +
-      0.3 * ((cfg.waitAllowanceHkd || 0) / 4);
+    // Visits at the kerb are what arrives; pickupShare turns them into taxis
+    // available for a fare. Anchoring on today's rate keeps the baseline level.
+    const loaded = cfg.loadedShare ?? 0.5;
+    const pickupToday = (1 - loaded) + loaded * (cfg.returnPickupToday ?? 0.4);
+    this.pickupShare = (1 - loaded) + loaded * (cfg.returnPickup ?? 0.4);
 
     // the ticket is driver time, not passenger time: it lengthens every visit
     const dwell = cfg.portDwellMin ?? 25.5;
-    incentive *= dwell / Math.max(1, dwell + (cfg.ticketDelayMin || 0));
+    const ticket = dwell / Math.max(1, dwell + (cfg.ticketDelayMin || 0));
+    const incentive = ticket * (
+      1 +
+      0.45 * ((cfg.portSurchargeHkd || 0) / 50) +
+      0.3 * ((cfg.waitAllowanceHkd || 0) / 4)
+    );
 
     this.supplyRatio = {
-      urban: cfg.taxiSupplyRatioUrban * incentive,
-      nt: cfg.taxiSupplyRatioNt * incentive,
+      urban: (cfg.taxiSupplyRatioUrban / Math.max(pickupToday, 1e-6)) * incentive,
+      nt: (cfg.taxiSupplyRatioNt / Math.max(pickupToday, 1e-6)) * incentive,
       prebook: cfg.prebookSupplyRatio,
     };
   }
@@ -528,7 +535,7 @@ export class Simulation {
     };
     if (flex) this.flexBuf.push(tx);
     else this.buf[cls].push(tx);
-    if (tFirst >= this.warm) this.taxiArrived++;
+    if (tFirst >= this.warm) this.taxiEntered++;
 
     if (cfg.taxiPatienceMeanMin < Infinity) {
       const pat = lognormal(this.rng, cfg.taxiPatienceMeanMin, cfg.taxiPatienceCv);
@@ -568,6 +575,17 @@ export class Simulation {
           const cls = a;
           const tFirst = b;
           const flex = c === 1;
+          if (tFirst >= this.warm) this.taxiArrived++;
+          if ((POOL_CLASSES.includes(cls) || flex) && this.rng() < (cfg.loadedShare ?? 0.5)) {
+            if (tFirst >= this.warm) this.taxiLoaded++;
+            if (this.rng() >= (cfg.returnPickup ?? 0.4)) {
+              if (tFirst >= this.warm) {
+                this.taxiDeclined++;
+                this.taxiLeftEmpty++;
+              }
+              break;
+            }
+          }
           if (cfg.infoShare > 0 && this.pq[cls].length < 6 && this.rng() < cfg.infoShare) {
             this.diverted = (this.diverted || 0) + 1;
             break;
@@ -762,6 +780,10 @@ export class Simulation {
       queueMax: this.qMax,
       littleGapPct: (100 * (qAvg - lLaw)) / Math.max(lLaw, 1e-9),
       taxiArrived: this.taxiArrived,
+      taxiLoaded: this.taxiLoaded,
+      taxiDeclined: this.taxiDeclined,
+      taxiEntered: this.taxiEntered,
+      emptyReturnPct: (100 * this.taxiDeclined) / Math.max(this.taxiLoaded, 1),
       taxiServed: this.taxiServed,
       taxiLeftEmpty: this.taxiLeftEmpty,
       taxiWastePct: (100 * this.taxiLeftEmpty) / Math.max(this.taxiArrived, 1),

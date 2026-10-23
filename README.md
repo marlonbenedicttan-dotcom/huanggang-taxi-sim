@@ -262,14 +262,14 @@ into town. Three supply-side instruments are modelled:
 
 | Policy | Parameter | What the model assumes it does |
 |---|---|---|
-| Return-trip booking | `backhaul_match` 0–1 | an arriving passenger books a Hong Kong taxi before clearing immigration; the booking goes to a taxi that has just dropped off, so the return leg is paid |
+| Return-trip booking | `return_pickup` 0–1 | share of drop-offs that take a passenger back into Hong Kong instead of deadheading; today about 40%, the booking policy lifts it |
 | Port pickup surcharge | `port_surcharge_hkd` 0–50 | a regulated extra fare on trips leaving the port |
 | Waiting-time allowance | `wait_allowance_hkd` 0–4 | paid per minute spent queueing at the port |
 
 Supply response, identical in both engines:
 
 ```
-supply = base_ratio x (1 + 0.35*backhaul + 0.45*surcharge/50 + 0.30*allowance/4)
+available supply = base_ratio x pickup_share x ticket x (1 + 0.45*surcharge/50 + 0.30*allowance/4)
 ```
 
 The return-booking coefficient is **0.35**: full matching raises supply by 35%,
@@ -365,10 +365,13 @@ repositioning fix: the same car, already at the port, leaves loaded.
 
 | | Mean wait | Gave up |
 |---|---|---|
-| today | 19.1 min | 18.1% |
-| digital ticket only | 9.0 min | 4.8% |
-| return booking only | 8.8 min | 4.3% |
+| today | 19.3 min | 18.0% |
+| digital ticket only | 8.9 min | 4.5% |
+| return booking only | 8.8 min | 3.9% |
 | **both** | **5.4 min** | **0.7%** |
+
+The same runs show the mechanism: drop-offs that go back empty fall from **60%**
+to **20%** once the booking policy is on.
 
 Thirty replications of `BASE`, seeds 1–30. The browser engine gives 19.7, 9.7,
 8.9 and 5.9 for the same rows, inside the confidence intervals reported by

@@ -36,6 +36,10 @@ from taxi_sim.scenarios import BASE, SMART
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 NODE = os.path.expanduser("~/.local/node/bin/node")
 
+# The two engines draw demand from independent RNG streams, so a raw count of
+# arrivals is compared with a tolerance rather than a confidence interval.
+TOLERANCE = {"party_arrived": 2.0}
+
 PAIRS = [
     ("wait_mean", "waitMean"),
     ("wait_mean_incl_abandon", "waitMeanInclAbandon"),
@@ -100,6 +104,8 @@ def main():
         jm, jc = mean_ci([r[js_key] for r in js])
         overlap = not (pm + pc < jm - jc or jm + jc < pm - pc)
         rel = 100 * (jm - pm) / pm if pm else 0.0
+        if py_key in TOLERANCE:
+            overlap = abs(rel) <= TOLERANCE[py_key]
         if not overlap:
             failures.append((py_key, rel))
         print(f"{py_key:<20}{pm:>11.2f} ± {pc:<9.2f}{jm:>13.2f} ± {jc:<9.2f}"

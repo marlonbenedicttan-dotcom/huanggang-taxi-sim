@@ -60,7 +60,7 @@ def test_no_abandonment_when_infinitely_patient():
 
 def test_recommendation_halves_the_wait():
     """Ticket + return booking, on identical seeds, must halve the wait."""
-    rec = replace(BASE, ticket_delay_min=1.5, backhaul_match=0.8)
+    rec = replace(BASE, ticket_delay_min=1.5, return_pickup=0.8)
     b = [_m(BASE, s)["wait_mean_incl_abandon"] for s in (11, 12, 13)]
     r = [_m(rec, s)["wait_mean_incl_abandon"] for s in (11, 12, 13)]
     assert sum(r) / 3 < sum(b) / 3 * 0.5, (b, r)

@@ -37,9 +37,9 @@ def wait(**kw):
 
 def main():
     base = wait()
-    backhaul = wait(backhaul_match=0.7)
+    backhaul = wait(return_pickup=0.7)
     print(f"baseline                          {base:5.2f} min")
-    print(f"guaranteed return fare (70%)      {backhaul:5.2f} min   {backhaul - base:+5.2f}")
+    print(f"take a fare back (70%)            {backhaul:5.2f} min   {backhaul - base:+5.2f}")
     print("\na state fleet is just extra guaranteed supply:")
     for k in (1.1, 1.2, 1.3, 1.4):
         m = wait(taxi_supply_ratio_urban=1.05 * k, taxi_supply_ratio_nt=0.95 * k)
