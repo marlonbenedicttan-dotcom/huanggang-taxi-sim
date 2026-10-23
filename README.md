@@ -114,7 +114,7 @@ frame, so the art keeps its authored pixel size instead of resampling.
 
 *Left panel: every parameter from section 3. Right: the hall at 17:30 — 51 urban
 passengers waiting, the urban buffer drained, the NT buffer full. Toggle
-"Everything on" and the same moment has no queue at all.*
+"All four on" and the same moment has no queue at all.*
 
 **Compare a proposal against the current process**
 
@@ -145,7 +145,7 @@ for N replications and refuses to claim an effect when the 95% intervals overlap
 **What you can do**
 
 * Drag to orbit, scroll to zoom.
-* Switch between **As it runs today**, **Everything on** and **★ Recommended** presets.
+* Switch between **As it runs today**, **All four on** and **★ Recommended** presets.
 * Change demand, taxi supply, bays, boarding time, dispatch cycle, misapplied
   routing, app share, patience, buffer size — then hit **Run**.
 * Scrub through the day (morning peak / midday / evening peak / whole shift) and
@@ -246,7 +246,7 @@ This table doubles as your data-collection plan.
 | — | **All operational** | P1+P2+P3+P4+P6, no new bays | package |
 | — | **Smart dispatch (full)** | operational package + 2 extra bays | Step 2 |
 
-> The website's **Everything on** preset enables the four cards on the page (ticket,
+> The website's **All four on** preset enables the four cards on the page (ticket,
 > return booking, driver information, extra stands). The *smart dispatch* package in
 > this table is a wider research scenario from the earlier design and is not the same
 > button.

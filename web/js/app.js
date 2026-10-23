@@ -490,6 +490,7 @@ function run() {
 
   state.shownMetrics = res.metrics;
   renderKpis(res.metrics, ms);
+  scheduleHeroSpread(cfg);
   drawChart();
 
   // paint the first frame immediately so the canvas is never blank
@@ -529,6 +530,8 @@ const KPI = [
     hint: "Averaged across the shift: empty taxis waiting for a fare, in the buffer or queued at the stands. If this is high while people still queue, the stands are the limit." },
 ];
 
+let heroSpreadToken = 0;
+let heroSpreadTimer = null;
 let shiftFrom = null;     // metrics as they were before a package was applied
 let shownWait = null;     // what the big number currently reads
 let pendingFlash = [];    // policy cards to flash once the package lands
@@ -549,6 +552,30 @@ function tweenNumber(el, from, to, dur = 480) {
 
 /** "1 in 5" is easier to read than "21.4%". */
 const rate = (pct) => (pct >= 1 ? `1 in ${Math.max(2, Math.round(100 / pct))}` : "almost nobody");
+
+/** How much the headline moves between runs, so one seed is not read as a fact. */
+function scheduleHeroSpread(cfg) {
+  clearTimeout(heroSpreadTimer);
+  const snapshot = structuredClone(cfg);
+  heroSpreadTimer = setTimeout(async () => {
+    const token = ++heroSpreadToken;
+    try {
+      const vals = await batchWait(snapshot, [21, 22, 23, 24, 25, 26, 27, 28]);
+      if (token !== heroSpreadToken) return;
+      const clean = vals.filter((v) => Number.isFinite(v));
+      if (clean.length < 2) return;
+      const m = clean.reduce((a, v) => a + v, 0) / clean.length;
+      const sd = Math.sqrt(clean.reduce((a, v) => a + (v - m) ** 2, 0) / (clean.length - 1));
+      const el = $("#heroPm");
+      if (el) {
+        el.textContent = `± ${sd.toFixed(1)}`;
+        el.title = "This is one run. Another seed typically lands within this much " +
+          `(1 s.d. over ${clean.length} runs).`;
+        el.hidden = false;
+      }
+    } catch {}
+  }, 260);
+}
 
 function hideShift() {
   const el = $("#heroShift");
