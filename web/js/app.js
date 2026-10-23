@@ -1253,20 +1253,36 @@ function renderPilot() {
     </tr>`).join("");
 }
 
+/* Cost model: capital is annualised at a real discount rate over its life,
+   opex is added, and the daily figure is prorated to the modelled shift before
+   it is divided by that shift's passenger-minutes. The old version compared a
+   full 24-hour cost with a 12-hour benefit, which doubled every $/min. */
+const DISCOUNT = 0.04;
+
+function annualCost(cost) {
+  const n = Math.max(1, cost.years || 1);
+  const crf = DISCOUNT > 0
+    ? (DISCOUNT * (1 + DISCOUNT) ** n) / ((1 + DISCOUNT) ** n - 1)
+    : 1 / n;
+  return (cost.capital || 0) * crf + (cost.annual || 0);
+}
+
 function renderValue() {
   const host = $("#valueRows");
   if (!host) return;
   const hours = WINDOWS[state.window].hours || 12;
-  const paxPerDay = valueOf("paxPerHour") * hours;
 
   const rows = CARDS
     .filter((c) => c.effect != null && c.cost)
     .map((c) => {
-      const daily = c.cost.daily != null
-        ? c.cost.daily
-        : (c.cost.capital / c.cost.years + c.cost.annual) / 365;
+      const annual = annualCost(c.cost);
+      const daily = annual / 365;
+      const shiftCost = daily * (hours / 24);
       const gain = -c.effect;                      // minutes saved per passenger
-      const perMin = gain > 0.3 ? daily / (gain * paxPerDay) : null;
+      // only claim a value when the effect clears two standard errors
+      const significant = c.effectSE == null || Math.abs(c.effect) > 2 * c.effectSE;
+      const saved = gain > 0 ? gain * valueOf("paxPerHour") * hours : 0;
+      const perMin = significant && saved > 0 ? shiftCost / saved : null;
       return { label: c.label, effect: c.effect, daily, perMin, kind: c.cost.kind };
     })
     .sort((a, b) => (a.perMin ?? Infinity) - (b.perMin ?? Infinity));

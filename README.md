@@ -238,6 +238,11 @@ This table doubles as your data-collection plan.
 | `ticket_delay_min` | 8.0 | driver time lost at the ticket point | Trade report, or stopwatch 20 taxis |
 | `prebook_supply_ratio` | 1.15 | fleet headroom over bookings | Booking-system logs |
 
+Costs are annualised at a **4% real discount rate** over each asset's life (capital
+recovery factor), and the daily figure is prorated to the modelled shift before it
+is divided by the passenger-minutes saved. Comparing a 24-hour cost with a
+12-hour benefit — the earlier version — doubled every `$ per minute saved`.
+
 `demand_profile` (24 hourly multipliers) and `nt_shift_hours` shape the peaks;
 `supply_flatness` controls how badly taxi supply follows demand.
 
