@@ -227,6 +227,7 @@ export class Simulation {
     this.qMax = 0;
     this.busySum = 0;
     this.bufSum = 0;
+    this.waitSum = 0;
     this.bufSumUrban = 0;
     this.bufSumNt = 0;
     this.overflowUrban = 0;
@@ -642,6 +643,8 @@ export class Simulation {
             this.busySum += busy;
             const bl = this.bufferVisualLen();
             this.bufSum += bl;
+            this.waitSum += bl + this.stand.urban.length + this.stand.nt.length +
+              this.stand.prebook.length;
             this.bufSumUrban += this.buf.urban.length;
             if (this.buf.urban.length >= this.cfg.bufferCapacity) this.urbanFullSamples++;
             this.bufSumNt += this.buf.nt.length;
@@ -756,6 +759,7 @@ export class Simulation {
       taxiLeftEmpty: this.taxiLeftEmpty,
       taxiWastePct: (100 * this.taxiLeftEmpty) / Math.max(this.taxiArrived, 1),
       bufferAvg: this.nSamples ? this.bufSum / this.nSamples : NaN,
+      taxiWaitingAvg: this.nSamples ? this.waitSum / this.nSamples : NaN,
       bufferAvgUrban: this.nSamples ? this.bufSumUrban / this.nSamples : NaN,
       bufferAvgNt: this.nSamples ? this.bufSumNt / this.nSamples : NaN,
       overflowUrban: this.overflowUrban,

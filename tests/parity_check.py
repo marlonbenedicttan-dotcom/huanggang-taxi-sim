@@ -44,6 +44,7 @@ PAIRS = [
     ("queue_avg", "queueAvg"),
     ("stand_util_pct", "standUtilPct"),
     ("buffer_avg", "bufferAvg"),
+    ("taxi_waiting_avg", "taxiWaitingAvg"),
     ("taxi_dwell_mean", "taxiDwellMean"),
     ("throughput_pax_h", "throughputPaxH"),
     ("party_arrived", "partyArrived"),

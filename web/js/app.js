@@ -525,8 +525,8 @@ const KPI = [
     hint: "How many people are standing in the queues, on average." },
   { key: "standUtilPct", label: "Stands busy", unit: "%", digits: 0, lowerBetter: false,
     hint: "How much of the time a boarding stand has a taxi in it." },
-  { key: "bufferAvg", label: "Taxis waiting", unit: "", digits: 0, lowerBetter: false,
-    hint: "Empty taxis waiting for a passenger. If this is high while people still queue, the stands are the limit." },
+  { key: "taxiWaitingAvg", label: "Taxis waiting", unit: "", digits: 0, lowerBetter: false,
+    hint: "Averaged across the shift: empty taxis waiting for a fare, in the buffer or queued at the stands. If this is high while people still queue, the stands are the limit." },
 ];
 
 let shiftFrom = null;     // metrics as they were before a package was applied

@@ -318,6 +318,7 @@ class Simulation:
         self.s_q = {c: [] for c in CLASSES}
         self.s_busy = []
         self.s_buf = []
+        self.s_wait = []   # buffer + stand queue: what a visitor sees as waiting
         self.s_t = []
 
         self._schedule()
@@ -666,6 +667,11 @@ class Simulation:
             self.s_q[c].append(len(self.pq[c]))
         self.s_busy.append(sum(self.busy.values()))
         self.s_buf.append(self._buffer_len())
+        # taxis queued behind the stands are waiting too; counting only the
+        # buffer made the KPI say "1 waiting" while the animation showed 20
+        self.s_wait.append(
+            self._buffer_len() + sum(len(self.stand[c]) for c in CLASSES)
+        )
 
     def _result(self) -> Result:
         cfg = self.cfg
@@ -723,6 +729,7 @@ class Simulation:
             "taxi_diverted": self.taxi_diverted,
             "taxi_waste_pct": 100.0 * self.taxi_left_empty / max(self.taxi_arrived, 1),
             "buffer_avg": _mean(buf),
+            "taxi_waiting_avg": _mean(self.s_wait),
             "buffer_max": max(buf) if buf else 0,
             "taxi_wait_mean": _mean(self.taxi_buffer_waits),
             "taxi_dwell_mean": _mean(self.taxi_dwells),
