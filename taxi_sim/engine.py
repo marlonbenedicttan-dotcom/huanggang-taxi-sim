@@ -87,7 +87,15 @@ class Config:
     # A port visit arrives either loaded (dropping a passenger who is going to
     # Shenzhen) or empty. A loaded taxi then decides whether to take a fare
     # back into Hong Kong; that decision is the repositioning policy.
-    loaded_share: float = 0.50         # share of taxi visits that arrive loaded
+    loaded_share: float = 0.50         # average share of taxi visits that arrive loaded
+    # the morning is mostly drop-offs (Hong Kong -> Shenzhen); the evening is
+    # mostly empty taxis coming for returning passengers. 24 hourly multipliers,
+    # normalised so their mean over the window equals `loaded_share`.
+    loaded_profile: tuple = (
+        0.30, 0.30, 0.30, 0.30, 0.35, 0.50, 0.80, 1.20,
+        1.60, 1.90, 1.80, 1.40, 1.00, 0.90, 0.90, 1.00,
+        1.10, 0.80, 0.50, 0.40, 0.35, 0.30, 0.30, 0.30,
+    )
     return_pickup_today: float = 0.40  # share of drop-offs that take a fare back today
     return_pickup: float = 0.40        # policy value (0-1)
     # drivers are not blind: above this share of a full buffer, some turn away
@@ -111,7 +119,8 @@ class Config:
     night_supply_factor: float = 0.35       # extra thinning of supply between 00:00 and 06:00
     buffer_capacity: int = 40               # spaces per taxi lane (urban / NT)
     flex_buffer_capacity: int = 15          # spaces for flexible taxis
-    prebook_supply_ratio: float = 1.15      # booking system guarantees supply
+    prebook_supply_ratio: float = 1.15      # unused by the dispatch model; kept for scenario files
+    prebook_dispatch_min: float = 0.75      # last-mile arrival after a booking
 
     # ---- pickup infrastructure ----------------------------------------
     stands: dict = field(default_factory=lambda: {"urban": 8, "nt": 3, "prebook": 2})
@@ -264,6 +273,7 @@ class Simulation:
         # day) so that ``pax_per_hour`` is the average rate of the shift being
         # studied and the peak/average ratio keeps its real meaning.
         self.demand_mult = _normalise(cfg.demand_profile, self._window_hours())
+        self.loaded_mult = _normalise(cfg.loaded_profile, self._window_hours())
         self.nt_mult = _normalise(
             rotated(cfg.demand_profile, cfg.nt_shift_hours), self._window_hours()
         )
@@ -400,9 +410,17 @@ class Simulation:
         heapify = heapq.heapify
 
         for cls in CLASSES:
-            for t in self._poisson_times(lambda h, c=cls: self._pax_rate(c, h)):
+            pax_times = self._poisson_times(lambda h, c=cls: self._pax_rate(c, h))
+            for t in pax_times:
                 pax = Pax(t, cls, self.rng.random() < cfg.app_share)
                 push((t, 0, "PAX", pax))
+                if cls == "prebook":
+                    # a booked trip is dispatched to a fleet taxi, it does not
+                    # rely on a taxi happening to arrive
+                    delay = _lognormal(self.rng, cfg.prebook_dispatch_min, 0.5)
+                    push((t + delay, 0, "PREBOOK", t))
+            if cls == "prebook":
+                continue          # fleet taxis come from bookings, not a stream
             for t in self._poisson_times(lambda h, c=cls: self._taxi_rate(c, h)):
                 flex = cls == "urban" and self.rng.random() < cfg.flex_share
                 push((t, 1, "TAXI", (cls if not flex else None, t, flex)))
@@ -608,23 +626,29 @@ class Simulation:
                 if t_first >= warm:
                     self.taxi_arrived += 1
                 # a drop-off may take a fare back (the policy) or deadhead
-                # a full rank deters some drivers before they queue at all
-                if cls in POOL_CLASSES or flex:
+                # a drop-off may take a fare back (the policy) or deadhead;
+                # the share arriving loaded varies by hour of day
+                booked = False
+                share_now = min(1.0, cfg.loaded_share * self.loaded_mult[self._hour(t_first)])
+                if ((cls in POOL_CLASSES or flex) and
+                        self.rng.random() < share_now):
+                    if t_first >= warm:
+                        self.taxi_loaded += 1
+                    if self.rng.random() >= cfg.return_pickup:
+                        if t_first >= warm:
+                            self.taxi_declined += 1
+                            self.taxi_left_empty += 1
+                        continue
+                    booked = True
+                # a busy rank deters drivers with no fare lined up; a booked
+                # taxi knows the trip is paid even if it has to wait
+                if not booked and (cls in POOL_CLASSES or flex):
                     cap = cfg.flex_buffer_capacity if flex else cfg.buffer_capacity
                     used = len(self.flex_buf) if flex else len(self.buf[cls])
                     if (cap > 0 and used >= cfg.queue_threshold * cap
                             and self.rng.random() < cfg.queue_aversion):
                         if t_first >= warm:
                             self.taxi_turned_away += 1
-                            self.taxi_left_empty += 1
-                        continue
-                if ((cls in POOL_CLASSES or flex) and
-                        self.rng.random() < cfg.loaded_share):
-                    if t_first >= warm:
-                        self.taxi_loaded += 1
-                    if self.rng.random() >= cfg.return_pickup:
-                        if t_first >= warm:
-                            self.taxi_declined += 1
                             self.taxi_left_empty += 1
                         continue
                 if (
@@ -647,6 +671,13 @@ class Simulation:
                     self._schedule_recirc(cls, t_first, flex)
                     continue
                 self._enter_buffer(cls, t_first, flex)
+                if cfg.dispatch_interval_min <= 0:
+                    self._release_continuous()
+                self._serve()
+
+            elif kind == "PREBOOK":
+                # fleet taxi dispatched for a booking
+                self._enter_buffer("prebook", self.t, False)
                 if cfg.dispatch_interval_min <= 0:
                     self._release_continuous()
                 self._serve()

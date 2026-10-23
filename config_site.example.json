@@ -1,16 +1,13 @@
 {
   "_comment": "Field measurements from the site survey. Delete any line you have not measured; run: python run_experiments.py --config config_site.json",
   "_defaults": "Every value below is the project default (a congested but plausible port). Replace what you can measure; see README section 3 for the survey method.",
-
   "duration_hours": 12,
   "start_hour": 8,
   "warmup_hours": 1,
   "pax_per_hour": 550,
-
   "party_size": 1.3,
-  "prebook_share": 0.10,
+  "prebook_share": 0.1,
   "urban_share": 0.75,
-
   "taxi_supply_basis_pax": 550,
   "taxi_supply_ratio_urban": 1.05,
   "taxi_supply_ratio_nt": 0.95,
@@ -18,32 +15,61 @@
   "supply_flatness": 0.55,
   "night_supply_factor": 0.35,
   "prebook_supply_ratio": 1.15,
-
-  "loaded_share": 0.50,
-  "return_pickup_today": 0.40,
-  "return_pickup": 0.40,
-  "queue_threshold": 0.50,
-  "queue_aversion": 0.70,
-
+  "loaded_share": 0.5,
+  "return_pickup_today": 0.4,
+  "return_pickup": 0.4,
+  "queue_threshold": 0.5,
+  "queue_aversion": 0.7,
   "port_dwell_min": 25.5,
   "ticket_delay_min": 8.0,
-
-  "stands": {"urban": 8, "nt": 3, "prebook": 2},
+  "stands": {
+    "urban": 8,
+    "nt": 3,
+    "prebook": 2
+  },
   "buffer_capacity": 40,
   "flex_buffer_capacity": 15,
   "stand_queue_capacity": 12,
-
-  "service_mean_min": {"urban": 1.5, "nt": 1.5, "prebook": 1.5},
-  "service_cv": 0.60,
-
+  "service_mean_min": {
+    "urban": 1.5,
+    "nt": 1.5,
+    "prebook": 1.5
+  },
+  "service_cv": 0.6,
   "dispatch_interval_min": 1.0,
   "dispatch_batch": 8,
   "misroute_prob": 0.06,
-
   "patience_mean_min": 35,
   "patience_cv": 0.35,
   "taxi_patience_mean_min": 45,
-  "taxi_patience_cv": 0.40,
+  "taxi_patience_cv": 0.4,
   "recirc_min": 8,
-  "recirc_max": 20
+  "recirc_max": 20,
+  "loaded_profile": [
+    0.3,
+    0.3,
+    0.3,
+    0.3,
+    0.35,
+    0.5,
+    0.8,
+    1.2,
+    1.6,
+    1.9,
+    1.8,
+    1.4,
+    1.0,
+    0.9,
+    0.9,
+    1.0,
+    1.1,
+    0.8,
+    0.5,
+    0.4,
+    0.35,
+    0.3,
+    0.3,
+    0.3
+  ],
+  "prebook_dispatch_min": 0.75
 }

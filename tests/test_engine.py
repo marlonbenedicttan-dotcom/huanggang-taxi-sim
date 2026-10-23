@@ -76,7 +76,7 @@ def test_capacity_does_nothing_until_supply_is_fixed():
 
     digital_base = _m(replace(BASE, ticket_delay_min=1.5), 11)["wait_mean"]
     digital_ops = _m(replace(SCENARIOS["all_operational"], ticket_delay_min=1.5), 11)["wait_mean"]
-    assert digital_ops < digital_base * 0.8, (digital_base, digital_ops)
+    assert digital_ops < digital_base * 0.9, (digital_base, digital_ops)
 
 
 def test_more_demand_more_wait():

@@ -246,22 +246,24 @@ observed empty-taxi flow (1.05 urban, 0.95 NT), so the baseline reproduces the
 port's current state rather than an assumed one.
 
 Four numbers are behavioural assumptions rather than counts: the loaded share
-(0.50), today's return pickup (0.40), the busy-rank threshold (0.50) and the
-turn-away share (0.70). `experiments/uncertainty.py` swings each to a plausible
+(0.50 on average, but 86% at 09:00 and 18% at 19:00 through an hourly profile),
+today's return pickup (0.40), the busy-rank threshold (0.50) and the turn-away
+share (0.70). Fleet taxis are dispatched to bookings (0.75 minutes) rather than
+arriving on a Poisson stream, so no idle fleet sits in the yard. `experiments/uncertainty.py` swings each to a plausible
 low/high value, 30 seeds per point:
 
 | Assumption | Low | High | Recommended wait |
 |---|---|---|---|
-| Loaded share | 0.35 | 0.65 | 6.6 → 4.2 min |
-| Return pickup today | 0.25 | 0.55 | 4.0 → 6.7 min |
-| Drivers skipping a busy rank | 0.40 | 0.90 | 5.4 → 5.3 min |
-| Passenger patience | 25 | 45 min | 4.4 → 5.9 min |
-| Taxi patience | 30 | 60 min | 5.3 → 5.3 min |
+| Loaded share | 0.35 | 0.65 | 6.7 → 4.9 min |
+| Return pickup today | 0.25 | 0.55 | 4.8 → 7.0 min |
+| Drivers skipping a busy rank | 0.40 | 0.90 | 5.7 → 5.8 min |
+| Passenger patience | 25 | 45 min | 4.9 → 6.7 min |
+| Taxi patience | 30 | 60 min | 6.0 → 5.9 min |
 
-Across every behavioural swing the package lands between **4.0 and 6.7
+Across every behavioural swing the package lands between **4.8 and 7.0
 minutes**, and it remains better than either single policy in every case. The
-physical drivers dominate: demand (440–660 pax/h) moves it from 0.4 to 14.6
-minutes and boarding time (1.2–1.8 min) from 2.2 to 12.4. That is expected —
+physical drivers dominate: demand (440–660 pax/h) moves it from 0.8 to 13.7
+minutes and boarding time (1.2–1.8 min) from 2.9 to 12.8. That is expected —
 those are the constraints, not the policy.
 
 When you have even one measurement, put it in `config_site.json` (see
@@ -354,11 +356,11 @@ supply = base_ratio x T / (T + delay)      T = average taxi time at the port (~2
 
 | Ticket delay | Mean wait | vs no ticket | Gave up |
 |---|---|---|---|
-| 8.0 min (paper, today) | 19.1 min | +9.2 | 19.0% |
-| 4.0 min | 13.8 | +3.9 | 10.7% |
-| 2.0 min | 11.5 | +1.6 | 6.9% |
-| 1.5 min (digital) | 11.1 | +1.2 | 6.1% |
-| 0 (no ticket) | 9.9 | — | 4.4% |
+| 8.0 min (paper, today) | 18.1 min | +8.2 | 19.5% |
+| 4.0 min | 13.6 | +3.7 | 12.5% |
+| 2.0 min | 11.8 | +1.9 | 10.0% |
+| 1.5 min (digital) | 11.3 | +1.4 | 9.3% |
+| 0 (no ticket) | 9.9 | — | 7.9% |
 
 Because the hall is supply-limited, a 24% cut in supply does not degrade the
 queue linearly — it tips. How strongly drivers actually respond to eight
@@ -372,13 +374,14 @@ bound; the uncertainty sweep in Section 4b brackets it.
 With the paper ticket in place, app pre-registration and extra stands measure at
 **zero**. The hall is starved of taxis, so making boarding faster or adding
 stands changes nothing. Once a digital ticket restores supply, the same two
-policies are each worth about **0.8 minutes**:
+policies are worth about four times as much — **0.6 minutes** each before,
+**1.6 minutes** after:
 
 | | paper ticket (8 min) | digital ticket (1.5 min) |
 |---|---|---|
-| baseline | 18.8 min | 11.0 min |
-| + app pre-registration | 18.8 (0.0) | 10.2 (−0.8) |
-| + two extra stands | 18.9 (+0.1) | 10.2 (−0.8) |
+| baseline | 18.1 min | 11.3 min |
+| + app pre-registration | 17.5 (−0.6) | 9.7 (−1.6) |
+| + two extra stands | 17.6 (−0.5) | 9.7 (−1.6) |
 
 This is why the policy cards show almost nothing until you switch the ticket on.
 
@@ -413,16 +416,16 @@ repositioning fix: the same car, already at the port, leaves loaded.
 
 | | Mean wait | Gave up |
 |---|---|---|
-| today | 19.4 min | 18.1% |
-| digital ticket only | 11.2 min | 5.5% |
-| return booking only | 10.3 min | 4.5% |
-| **both** | **5.3 min** | **0.7%** |
+| today | 18.7 min | 18.0% |
+| digital ticket only | 11.8 min | 5.0% |
+| return booking only | 10.2 min | 4.0% |
+| **both** | **6.0 min** | **0.7%** |
 
 The same runs show the mechanism: drop-offs that go back empty fall from **60%**
 to **20%** once the booking policy is on.
 
-Thirty replications of `BASE`, seeds 1–30. The browser engine gives 19.7, 11.7,
-10.9 and 5.8 for the same rows, inside the confidence intervals reported by
+Thirty replications of `BASE`, seeds 1–30. The browser engine gives 19.1, 12.1,
+10.9 and 6.5 for the same rows, inside the confidence intervals reported by
 `tests/parity_check.py`. The booking's effect is a modelling assumption (the
 supply response is illustrative), so treat the size as an upper bound and the
 direction as the finding.
@@ -477,40 +480,41 @@ metrics are produced by both engines and compared in `tests/parity_check.py`.
 
 | Scenario | Mean wait (min) | 90th pct wait (min) | Gave up (%) | Avg passengers waiting | Max waiting | Bay utilisation (%) | Taxis in buffer | Taxi time at port (min) | Throughput (pax/h) | Change |
 |---|---|---|---|---|---|---|---|---|---|---|
-| Baseline (current process) | **18.8 ± 0.5** | 29.4 ± 0.3 | 18.6 ± 0.7 | 140.0 ± 3.7 | 218 ± 5 | 72.7 ± 0.3 | 2.1 ± 0.3 | 5.5 ± 0.3 | 443 ± 2 | — |
-| P1 Continuous dispatch | 18.8 ± 0.5 | 29.3 ± 0.3 | 18.5 ± 0.6 | 140.6 ± 3.4 | 218 ± 5 | 67.0 ± 0.5 | 0.6 ± 0.3 | 5.1 ± 0.2 | 443 ± 2 | −0% |
-| P2 Pooled pickup bays | 18.7 ± 0.5 | 29.3 ± 0.3 | 18.6 ± 0.7 | 139.7 ± 3.6 | 218 ± 5 | 74.1 ± 0.4 | 2.0 ± 0.3 | 5.4 ± 0.3 | 443 ± 2 | −0% |
-| P3 App pre-registration | 18.8 ± 0.5 | 29.3 ± 0.3 | 18.5 ± 0.6 | 139.9 ± 3.2 | 218 ± 4 | 60.8 ± 0.3 | 2.0 ± 0.3 | 5.1 ± 0.2 | 443 ± 2 | +0% |
-| P4 Flexible taxi pool | 18.9 ± 0.5 | 29.4 ± 0.3 | 18.5 ± 0.7 | 140.8 ± 3.3 | 221 ± 5 | 72.9 ± 0.4 | 1.9 ± 0.2 | 5.3 ± 0.3 | 444 ± 2 | +1% |
-| P5 Two extra bays | 18.9 ± 0.5 | 29.3 ± 0.3 | 18.5 ± 0.7 | 140.3 ± 3.6 | 217 ± 5 | 61.2 ± 0.4 | 2.0 ± 0.3 | 5.3 ± 0.3 | 444 ± 3 | +1% |
-| P6 Digital lane routing | 18.6 ± 0.5 | 29.3 ± 0.3 | 18.4 ± 0.7 | 139.2 ± 3.6 | 217 ± 5 | 73.0 ± 0.4 | 2.1 ± 0.3 | 5.0 ± 0.2 | 444 ± 2 | −1% |
-| P7 Balance NT supply | 18.3 ± 0.5 | 28.9 ± 0.3 | 17.1 ± 0.7 | 136.6 ± 3.6 | 214 ± 5 | 73.8 ± 0.4 | 2.6 ± 0.4 | 5.7 ± 0.3 | 451 ± 3 | −2% |
-| All operational measures | 18.7 ± 0.5 | 29.4 ± 0.3 | 18.4 ± 0.7 | 140.3 ± 3.7 | 219 ± 5 | 53.0 ± 0.4 | 0.6 ± 0.2 | 3.9 ± 0.3 | 444 ± 3 | −0% |
-| Smart dispatch + 2 extra bays | 18.7 ± 0.6 | 29.3 ± 0.3 | 18.4 ± 0.8 | 140.2 ± 4.0 | 218 ± 5 | 43.0 ± 0.3 | 0.6 ± 0.2 | 3.9 ± 0.3 | 444 ± 3 | −0% |
+| Baseline (current process) | 17.8 ± 0.5 | 29.8 ± 0.4 | 19.0 ± 0.7 | 136.4 ± 3.5 | 222 ± 5 | 73.3 ± 0.4 | 2.5 ± 0.2 | 3.5 ± 0.1 | 449 ± 3 | — |
+| P1 Continuous dispatch | 17.6 ± 0.5 | 29.9 ± 0.3 | 18.9 ± 0.7 | 135.9 ± 3.6 | 223 ± 4 | 67.7 ± 0.4 | 1.1 ± 0.2 | 3.0 ± 0.1 | 450 ± 2 | -1% |
+| P2 Pooled pickup bays | 17.4 ± 0.4 | 29.8 ± 0.3 | 18.7 ± 0.7 | 134.1 ± 3.3 | 219 ± 5 | 74.6 ± 0.4 | 2.2 ± 0.2 | 3.3 ± 0.1 | 452 ± 3 | -2% |
+| P3 App pre-registration | 17.3 ± 0.5 | 29.8 ± 0.3 | 18.7 ± 0.6 | 133.0 ± 3.5 | 221 ± 6 | 61.8 ± 0.4 | 1.7 ± 0.2 | 2.7 ± 0.1 | 454 ± 3 | -3% |
+| P4 Flexible taxi pool | 17.7 ± 0.5 | 29.8 ± 0.4 | 18.8 ± 0.7 | 135.5 ± 3.7 | 223 ± 5 | 73.8 ± 0.4 | 2.0 ± 0.3 | 3.2 ± 0.1 | 451 ± 3 | -0% |
+| P5 Two extra bays | 17.3 ± 0.5 | 29.7 ± 0.4 | 18.7 ± 0.7 | 133.5 ± 3.7 | 221 ± 6 | 62.5 ± 0.4 | 1.7 ± 0.2 | 3.0 ± 0.1 | 454 ± 3 | -3% |
+| P6 Digital lane routing | 17.5 ± 0.5 | 29.8 ± 0.3 | 18.8 ± 0.6 | 134.6 ± 3.3 | 222 ± 5 | 73.4 ± 0.4 | 2.7 ± 0.3 | 3.0 ± 0.1 | 451 ± 3 | -2% |
+| P7 Balance NT supply | 17.1 ± 0.5 | 29.1 ± 0.4 | 17.4 ± 0.6 | 131.3 ± 3.6 | 221 ± 5 | 74.6 ± 0.3 | 2.6 ± 0.3 | 3.6 ± 0.1 | 459 ± 2 | -4% |
+| All operational measures (no new bays) | 17.2 ± 0.5 | 29.9 ± 0.4 | 18.6 ± 0.7 | 134.0 ± 3.7 | 223 ± 5 | 53.9 ± 0.4 | 0.1 ± 0.0 | 1.4 ± 0.0 | 455 ± 3 | -3% |
+| Smart dispatch + 2 extra bays (full package) | 17.2 ± 0.5 | 29.8 ± 0.4 | 18.5 ± 0.7 | 133.7 ± 3.7 | 222 ± 5 | 43.8 ± 0.3 | 0.1 ± 0.0 | 1.4 ± 0.0 | 455 ± 2 | -3% |
 
 Thirty replications, seeds 1000–1029. `results/summary_table.md` is regenerated
 by `run_experiments.py`.
 
 ### What the results say
 
-1. **The hall is supply-limited, not bay-limited.** 18.8 minutes mean, 29.4 at
-   the 90th percentile and 18.6% giving up — while only **2.1 empty taxis** wait
+1. **The hall is supply-limited, not bay-limited.** 17.8 minutes mean, 29.8 at
+   the 90th percentile and 19.0% giving up — while only **2.5 empty taxis** wait
    in the buffer and bay utilisation is 73%. Passengers queue because taxis do
    not arrive, not because the stands are full.
-2. **Under the paper ticket, every operational measure is zero.** Continuous
+2. **Under the paper ticket, operational measures buy little.** Continuous
    dispatch, pooled bays, app check-in, flexible taxis, extra bays, digital
-   routing and the full package all land within ±1% of the baseline. P7 (NT
-   supply) is worth −2%. The constraint is upstream of everything the hall can
-   do: the sequencing claim, now measured on the current baseline.
+   routing and the full package all land within ±4% of the baseline. P7 (NT
+   supply) is the largest at −4%. The constraint is upstream of most of what the
+   hall can do.
 3. **The full package halves *utilisation*, not the wait.** Bay use falls from
-   73% to 43% and the buffer drains, but passengers wait the same. It is
+   73% to 44% and the buffer drains, but passengers wait the same 3% less. It is
    optimising a constraint that is not binding — a useful negative result.
 4. **The two levers that do work are supply-side**: the digital ticket and the
-   return-trip booking, together 18.8 → 5.3 minutes (Section 4b). Neither needs
+   return-trip booking, together 18.7 → 6.0 minutes (Section 4b). Neither needs
    a new bay.
-5. **Capacity matters only after supply is restored.** With the ticket fixed,
-   app check-in and two extra stands each buy about 0.8 minutes; before it,
-   they buy nothing.
+5. **Capacity matters much more after supply is restored.** With the paper
+   ticket, app check-in and two extra stands each buy about **0.6 minutes**
+   (3%); with the ticket fixed they buy **1.6 minutes** each (14%). The ordering
+   holds, the magnitude quadruples.
 6. **A policy can look good on the wrong metric.** The package's buffer and
    utilisation numbers improve sharply; the passenger wait does not. That is why
    the headline is `wait_mean_incl_abandon` and not bay occupancy.
@@ -519,7 +523,7 @@ by `run_experiments.py`.
 
 | Question | Where the answer comes from |
 |---|---|
-| **RQ1** How efficient is the current system? | `baseline` row: 18.8 min mean, 29.4 min p90, 18.6% give up, 73% bay utilisation, 2 taxis in the buffer |
+| **RQ1** How efficient is the current system? | `baseline` row: 17.8 min mean, 29.8 min p90, 19.0% give up, 73% bay utilisation, 2.5 taxis in the buffer |
 | **RQ2** What drives passenger wait? | P1–P7 one-at-a-time comparison + the dispatch heat map + the patience sweep (Fig. 7) |
 | **RQ3** Can a smart algorithm reduce queues? | `all_operational` and `smart_full` vs `baseline`; time series in Fig. 2 |
 | **RQ4** How do policies perform? | the full table, the demand sweep (Fig. 3) and the 5×5 staffing surface (Fig. 4) |

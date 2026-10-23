@@ -71,6 +71,11 @@ export const DEFAULTS = {
   // A loaded taxi then decides whether to take a fare back into Hong Kong;
   // that decision is the repositioning policy.
   loadedShare: 0.5,
+  loadedProfile: [
+    0.30, 0.30, 0.30, 0.30, 0.35, 0.50, 0.80, 1.20,
+    1.60, 1.90, 1.80, 1.40, 1.00, 0.90, 0.90, 1.00,
+    1.10, 0.80, 0.50, 0.40, 0.35, 0.30, 0.30, 0.30,
+  ],
   returnPickupToday: 0.4,
   returnPickup: 0.4,
   queueThreshold: 0.5,
@@ -86,6 +91,7 @@ export const DEFAULTS = {
   supplyFlatness: 0.55,
   nightSupplyFactor: 0.35,
   prebookSupplyRatio: 1.15,
+  prebookDispatchMin: 0.75,
   bufferCapacity: 40,
   flexBufferCapacity: 15,
 
@@ -171,7 +177,7 @@ class Heap {
  * ------------------------------------------------------------------ */
 const EV = {
   PAX: 0, TAXI: 1, ABANDON: 2, GIVEUP: 3,
-  SERVICE: 4, RELEASE: 5, RECIRC: 6, SAMPLE: 7, FRAME: 8,
+  SERVICE: 4, RELEASE: 5, RECIRC: 6, SAMPLE: 7, FRAME: 8, PREBOOK: 9,
 };
 
 /* ------------------------------------------------------------------ *
@@ -281,6 +287,7 @@ export class Simulation {
     const rotated = (lag) => cfg.demandProfile.map((_, h) => cfg.demandProfile[(h - lag + 24) % 24]);
 
     this.demandMult = Simulation.norm(cfg.demandProfile, wh);
+    this.loadedMult = Simulation.norm(cfg.loadedProfile, wh);
     this.ntMult = Simulation.norm(rotated(cfg.ntShiftHours), wh);
     const lagged = rotated(cfg.supplyLagHours);
     const flat = lagged.map((v, h) =>
@@ -373,9 +380,15 @@ export class Simulation {
     const cfg = this.cfg;
 
     for (const cls of CLASSES) {
-      for (const t of this.poissonTimes((h) => this.paxRate(cls, h))) {
+      const paxTimes = this.poissonTimes((h) => this.paxRate(cls, h));
+      for (const t of paxTimes) {
         this.push(t, EV.PAX, cls, this.rng() < cfg.appShare ? 1 : 0, 0);
+        if (cls === "prebook") {
+          const delay = lognormal(this.rng, cfg.prebookDispatchMin, 0.5);
+          this.push(t + delay, EV.PREBOOK, 0, 0, 0);
+        }
       }
+      if (cls === "prebook") continue;   // fleet taxis come from bookings
       for (const t of this.poissonTimes((h) => this.taxiRate(cls, h))) {
         const flex = cls === "urban" && this.rng() < cfg.flexShare;
         this.push(t, EV.TAXI, cls, t, flex ? 1 : 0);
@@ -579,7 +592,9 @@ export class Simulation {
           const tFirst = b;
           const flex = c === 1;
           if (tFirst >= this.warm) this.taxiArrived++;
-          if ((POOL_CLASSES.includes(cls) || flex) && this.rng() < (cfg.loadedShare ?? 0.5)) {
+          let booked = false;
+          const shareNow = Math.min(1, (cfg.loadedShare ?? 0.5) * this.loadedMult[this.hour(tFirst)]);
+          if ((POOL_CLASSES.includes(cls) || flex) && this.rng() < shareNow) {
             if (tFirst >= this.warm) this.taxiLoaded++;
             if (this.rng() >= (cfg.returnPickup ?? 0.4)) {
               if (tFirst >= this.warm) {
@@ -588,8 +603,9 @@ export class Simulation {
               }
               break;
             }
+            booked = true;
           }
-          if (POOL_CLASSES.includes(cls) || flex) {
+          if (!booked && (POOL_CLASSES.includes(cls) || flex)) {
             const cap = flex ? cfg.flexBufferCapacity : cfg.bufferCapacity;
             const used = flex ? this.flexBuf.length : this.buf[cls].length;
             if (cap > 0 && used >= (cfg.queueThreshold ?? 0.5) * cap &&
@@ -615,6 +631,12 @@ export class Simulation {
             break;
           }
           this.enterBuffer(cls, tFirst, flex);
+          if (cfg.dispatchIntervalMin <= 0) this.releaseContinuous();
+          this.serve();
+          break;
+        }
+        case EV.PREBOOK: {
+          this.enterBuffer("prebook", this.t, false);
           if (cfg.dispatchIntervalMin <= 0) this.releaseContinuous();
           this.serve();
           break;
