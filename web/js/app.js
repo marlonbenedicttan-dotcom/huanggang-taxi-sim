@@ -527,7 +527,7 @@ const KPI = [
   { key: "standUtilPct", label: "Stands busy", unit: "%", digits: 0, lowerBetter: false,
     hint: "How much of the time a boarding stand has a taxi in it." },
   { key: "taxiWaitingAvg", label: "Taxis waiting", unit: "", digits: 0, lowerBetter: false,
-    hint: "Averaged across the shift: empty taxis waiting for a fare, in the buffer or queued at the stands. If this is high while people still queue, the stands are the limit." },
+    hint: "Empty taxis waiting, averaged over the shift. High with long passenger queues means the stands are the limit; high with short queues means too many taxis were drawn in." },
 ];
 
 let heroSpreadToken = 0;
@@ -1000,8 +1000,9 @@ const CARDS = [
       "immigration. The booking goes to a taxi that has just dropped someone off, so " +
       "the driver knows the return leg is paid before deciding to come. Booked trips " +
       "use the pre-booked stand, so the walk-up queue is not pushed back. No new cars, " +
-      "no new licence, and no agreement with Shenzhen — it is a repositioning fix. " +
-      "The model assumes 8 in 10 drop-offs can be matched this way.",
+      "no new licence, and no agreement with Shenzhen — a repositioning fix worth " +
+      "about as much as the ticket. The model assumes 8 in 10 drop-offs can be " +
+      "matched this way.",
   },
   {
     label: "Two more boarding stands",

@@ -11,7 +11,7 @@ modelled here as ways to raise the expected value of a port trip:
 
 Supply response (both engines):
 
-    supply = base_ratio * (1 + 0.60*backhaul + 0.45*(surcharge/50) + 0.30*(allowance/4))
+    supply = base_ratio * (1 + 0.35*backhaul + 0.45*(surcharge/50) + 0.30*(allowance/4))
 
 THE COEFFICIENTS ARE ILLUSTRATIVE, NOT MEASURED. Nobody has published a
 driver supply elasticity for this port, so the numbers below answer "what does

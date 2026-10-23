@@ -269,8 +269,14 @@ into town. Three supply-side instruments are modelled:
 Supply response, identical in both engines:
 
 ```
-supply = base_ratio x (1 + 0.60*backhaul + 0.45*surcharge/50 + 0.30*allowance/4)
+supply = base_ratio x (1 + 0.35*backhaul + 0.45*surcharge/50 + 0.30*allowance/4)
 ```
+
+The return-booking coefficient is **0.35**: full matching raises supply by 35%,
+deliberately less than the trip's revenue gain, so the headline does not depend
+on drivers responding one-for-one. A sweep from 0.20 to 0.60 moves the
+recommended package's wait from 6.2 to 4.0 minutes — the direction never
+changes, only the size.
 
 **The coefficients are illustrative, not measured.** No driver supply
 elasticity has been published for this port, so
@@ -361,11 +367,11 @@ repositioning fix: the same car, already at the port, leaves loaded.
 |---|---|---|
 | today | 19.1 min | 18.1% |
 | digital ticket only | 9.0 min | 4.8% |
-| return booking only | 6.1 min | 1.2% |
-| **both** | **4.0 min** | **0.1%** |
+| return booking only | 8.8 min | 4.3% |
+| **both** | **5.4 min** | **0.7%** |
 
 Thirty replications of `BASE`, seeds 1–30. The browser engine gives 19.7, 9.7,
-6.6 and 4.2 for the same rows, inside the confidence intervals reported by
+8.9 and 5.9 for the same rows, inside the confidence intervals reported by
 `tests/parity_check.py`. The booking's effect is a modelling assumption (the
 supply response is illustrative), so treat the size as an upper bound and the
 direction as the finding.

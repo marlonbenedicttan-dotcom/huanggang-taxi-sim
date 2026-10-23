@@ -85,6 +85,7 @@ class Config:
     # value of the trip and therefore the supply that turns up. The
     # coefficients below are illustrative, not measured (see README).
     backhaul_match: float = 0.0             # 0-1: share of trips with a matched return fare
+    backhaul_supply_response: float = 0.35  # extra supply per unit of matching (conservative)
     port_surcharge_hkd: float = 0.0         # regulated extra fare on port pickups
     wait_allowance_hkd: float = 0.0         # paid per minute waiting in the queue
     # ---- queue-ticket regime (new Huanggang Port, 2026) -----------------
@@ -278,7 +279,7 @@ class Simulation:
         }
         incentive = (
             1.0
-            + 0.60 * cfg.backhaul_match
+            + cfg.backhaul_supply_response * cfg.backhaul_match
             + 0.45 * (cfg.port_surcharge_hkd / 50.0)
             + 0.30 * (cfg.wait_allowance_hkd / 4.0)
         )

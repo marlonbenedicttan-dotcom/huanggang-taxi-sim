@@ -71,6 +71,7 @@ export const DEFAULTS = {
   // raises how many empty taxis choose to come. Coefficients are illustrative
   // (see README "what the incentives actually assume").
   backhaulMatch: 0,
+  backhaulSupplyResponse: 0.35,
   portSurchargeHkd: 0,
   waitAllowanceHkd: 0,
   // queue-ticket regime: paper ticket at the buffer costs the driver ~8 min
@@ -297,7 +298,7 @@ export class Simulation {
     // gamble. These policies raise that value, so more drivers accept the run.
     let incentive =
       1 +
-      0.6 * (cfg.backhaulMatch || 0) +
+      (cfg.backhaulSupplyResponse ?? 0.35) * (cfg.backhaulMatch || 0) +
       0.45 * ((cfg.portSurchargeHkd || 0) / 50) +
       0.3 * ((cfg.waitAllowanceHkd || 0) / 4);
 
