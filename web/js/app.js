@@ -1211,9 +1211,11 @@ function scheduleEffects(delay = 1100) {
 function renderPilot() {
   const host = $("#pilotRows");
   if (!host) return;
-  const on = CARDS.filter((c) => c.isOn(state.values) && c.pilot?.weeks);
+  // the planner answers "what would you measure if you tried this?", which is
+  // useful before switching anything on
+  const on = CARDS.filter((c) => c.pilot?.weeks);
   if (!on.length) {
-    host.innerHTML = `<tr><td colspan="3" class="muted">switch on a policy to see what a trial would measure</td></tr>`;
+    host.innerHTML = `<tr><td colspan="3" class="muted">no policy in this build has a trial design</td></tr>`;
     return;
   }
   host.innerHTML = on.map((c) => `<tr>

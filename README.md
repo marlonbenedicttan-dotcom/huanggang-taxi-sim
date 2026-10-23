@@ -246,6 +246,11 @@ This table doubles as your data-collection plan.
 | — | **All operational** | P1+P2+P3+P4+P6, no new bays | package |
 | — | **Smart dispatch (full)** | operational package + 2 extra bays | Step 2 |
 
+> The website's **Everything on** preset enables the four cards on the page (ticket,
+> return booking, driver information, extra stands). The *smart dispatch* package in
+> this table is a wider research scenario from the earlier design and is not the same
+> button.
+
 ### Driver incentives (supply-side policies)
 
 Every policy above acts *inside* the port. None of them help if taxis do not

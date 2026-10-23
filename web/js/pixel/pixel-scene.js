@@ -636,7 +636,11 @@ export class PixelScene {
     const buf = this.labelEls[3];
     const [bx, bz] = bufferPos(0, 5);
     const pb = this.project(bx, 1.7, bz);
-    buf.innerHTML = `<b>${f.buf}</b> taxis`;
+    // buffer + stand queue: the same population the "Taxis waiting" KPI
+    // reports, so the map label and the number cannot disagree
+    let waitingTaxis = 0;
+    for (const row of f.tx) if (row[2] === 0 || row[2] === 1) waitingTaxis++;
+    buf.innerHTML = `<b>${waitingTaxis}</b> taxis`;
     buf.style.transform = `translate(${pb.x}px, ${pb.y}px) translate(-50%, -100%)`;
     buf.classList.toggle("hidden", !inView(bx, bz));
   }
