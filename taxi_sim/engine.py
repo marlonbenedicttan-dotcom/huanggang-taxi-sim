@@ -90,6 +90,9 @@ class Config:
     loaded_share: float = 0.50         # share of taxi visits that arrive loaded
     return_pickup_today: float = 0.40  # share of drop-offs that take a fare back today
     return_pickup: float = 0.40        # policy value (0-1)
+    # drivers are not blind: above this share of a full buffer, some turn away
+    queue_threshold: float = 0.50      # 0-1 of buffer capacity
+    queue_aversion: float = 0.70       # share of arrivals that skip a busy rank
     port_surcharge_hkd: float = 0.0         # regulated extra fare on port pickups
     wait_allowance_hkd: float = 0.0         # paid per minute waiting in the queue
     # ---- queue-ticket regime (new Huanggang Port, 2026) -----------------
@@ -317,6 +320,7 @@ class Simulation:
         self.taxi_arrived = 0      # visits at the kerb (loaded + empty)
         self.taxi_loaded = 0       # visits that brought a passenger
         self.taxi_declined = 0     # drop-offs that went back empty
+        self.taxi_turned_away = 0  # visits that saw a full rank and left
         self.taxi_entered = 0      # taxis that joined the rank
         self.taxi_served = 0
         self.taxi_left_empty = 0
@@ -604,6 +608,16 @@ class Simulation:
                 if t_first >= warm:
                     self.taxi_arrived += 1
                 # a drop-off may take a fare back (the policy) or deadhead
+                # a full rank deters some drivers before they queue at all
+                if cls in POOL_CLASSES or flex:
+                    cap = cfg.flex_buffer_capacity if flex else cfg.buffer_capacity
+                    used = len(self.flex_buf) if flex else len(self.buf[cls])
+                    if (cap > 0 and used >= cfg.queue_threshold * cap
+                            and self.rng.random() < cfg.queue_aversion):
+                        if t_first >= warm:
+                            self.taxi_turned_away += 1
+                            self.taxi_left_empty += 1
+                        continue
                 if ((cls in POOL_CLASSES or flex) and
                         self.rng.random() < cfg.loaded_share):
                     if t_first >= warm:
@@ -765,6 +779,7 @@ class Simulation:
             "taxi_arrived": self.taxi_arrived,
             "taxi_loaded": self.taxi_loaded,
             "taxi_declined": self.taxi_declined,
+            "taxi_turned_away": self.taxi_turned_away,
             "taxi_entered": self.taxi_entered,
             "empty_return_pct": 100.0 * self.taxi_declined / max(self.taxi_loaded, 1),
             "taxi_served": self.taxi_served,

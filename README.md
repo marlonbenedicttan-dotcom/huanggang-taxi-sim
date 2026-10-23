@@ -348,6 +348,18 @@ policies are each worth about **1.3 minutes**:
 
 This is why the policy cards show almost nothing until you switch the ticket on.
 
+### Drivers react to the rank
+
+Above half of a lane's buffer capacity, 70% of arriving taxis turn away rather
+than queue. Without this the rank fills to its physical limit and stays there:
+with the policy on, the standing pool sat at ~105 taxis. With the feedback it
+is ~66, and 1,249 of the day's visits are turned away in the 30-seed runs.
+
+The parameters are unmeasured. Sweeping the threshold from 0.30 to 0.80 and the
+turn-away share from 0.5 to 0.9 moves the recommended package's wait only
+between **5.2 and 5.5 minutes** — the recommendation does not depend on where
+this behaviour sits, which is the useful result.
+
 ### The return leg: a booking, not a border quota
 
 The taxi never crosses the boundary. It drops a passenger at Huanggang and needs
@@ -365,16 +377,16 @@ repositioning fix: the same car, already at the port, leaves loaded.
 
 | | Mean wait | Gave up |
 |---|---|---|
-| today | 19.3 min | 18.0% |
-| digital ticket only | 8.9 min | 4.5% |
-| return booking only | 8.8 min | 3.9% |
-| **both** | **5.4 min** | **0.7%** |
+| today | 19.4 min | 18.1% |
+| digital ticket only | 11.2 min | 5.5% |
+| return booking only | 10.3 min | 4.5% |
+| **both** | **5.3 min** | **0.7%** |
 
 The same runs show the mechanism: drop-offs that go back empty fall from **60%**
 to **20%** once the booking policy is on.
 
-Thirty replications of `BASE`, seeds 1–30. The browser engine gives 19.7, 9.7,
-8.9 and 5.9 for the same rows, inside the confidence intervals reported by
+Thirty replications of `BASE`, seeds 1–30. The browser engine gives 19.7, 11.7,
+10.9 and 5.8 for the same rows, inside the confidence intervals reported by
 `tests/parity_check.py`. The booking's effect is a modelling assumption (the
 supply response is illustrative), so treat the size as an upper bound and the
 direction as the finding.

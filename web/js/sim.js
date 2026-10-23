@@ -73,6 +73,8 @@ export const DEFAULTS = {
   loadedShare: 0.5,
   returnPickupToday: 0.4,
   returnPickup: 0.4,
+  queueThreshold: 0.5,
+  queueAversion: 0.7,
   portSurchargeHkd: 0,
   waitAllowanceHkd: 0,
   // queue-ticket regime: paper ticket at the buffer costs the driver ~8 min
@@ -221,6 +223,7 @@ export class Simulation {
     this.taxiArrived = 0;    // visits at the kerb (loaded + empty)
     this.taxiLoaded = 0;
     this.taxiDeclined = 0;
+    this.taxiTurnedAway = 0;
     this.taxiEntered = 0;
     this.taxiServed = 0;
     this.taxiLeftEmpty = 0;
@@ -586,6 +589,18 @@ export class Simulation {
               break;
             }
           }
+          if (POOL_CLASSES.includes(cls) || flex) {
+            const cap = flex ? cfg.flexBufferCapacity : cfg.bufferCapacity;
+            const used = flex ? this.flexBuf.length : this.buf[cls].length;
+            if (cap > 0 && used >= (cfg.queueThreshold ?? 0.5) * cap &&
+                this.rng() < (cfg.queueAversion ?? 0.7)) {
+              if (tFirst >= this.warm) {
+                this.taxiTurnedAway++;
+                this.taxiLeftEmpty++;
+              }
+              break;
+            }
+          }
           if (cfg.infoShare > 0 && this.pq[cls].length < 6 && this.rng() < cfg.infoShare) {
             this.diverted = (this.diverted || 0) + 1;
             break;
@@ -782,6 +797,7 @@ export class Simulation {
       taxiArrived: this.taxiArrived,
       taxiLoaded: this.taxiLoaded,
       taxiDeclined: this.taxiDeclined,
+      taxiTurnedAway: this.taxiTurnedAway,
       taxiEntered: this.taxiEntered,
       emptyReturnPct: (100 * this.taxiDeclined) / Math.max(this.taxiLoaded, 1),
       taxiServed: this.taxiServed,
