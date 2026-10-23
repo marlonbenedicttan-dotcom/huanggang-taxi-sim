@@ -139,6 +139,10 @@ for N replications and refuses to claim an effect when the 95% intervals overlap
   automatically (a run takes ~30 ms), so there is no Run button to forget.
 * **Shareable** — *copy link* encodes the whole scenario in the URL, and a
   3-step tour runs on the first visit.
+* **The Python model on the page** — the panel at the bottom serves the original
+  `engine.py`, `scenarios.py` and `stats.py` for reading or download, plus a link
+  to the repository. `tools/sync_py.py` copies them into `web/py/` and
+  `tests/code_sync_check.py` fails if the copies drift.
 * On a phone the split becomes an **A/B swap** (one scene at a time, `Show A`
   button) because two live scenes would waste memory on a phone.
 

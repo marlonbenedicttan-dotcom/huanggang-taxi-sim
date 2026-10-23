@@ -1725,6 +1725,35 @@ function init() {
     if (c) { c.textContent = "✓ Applied — undo"; c.classList.add("applied"); }
   });
 
+  // ---- the Python model, readable and downloadable from the page ----
+  const pyPanel = document.getElementById("pyPanel");
+  const pyCode = document.getElementById("pyCode");
+  let pyLoaded = null;
+  const showPy = async (name) => {
+    if (!pyCode) return;
+    pyCode.textContent = `loading ${name}…`;
+    try {
+      const res = await fetch(`./py/${name}`, { cache: "no-cache" });
+      if (!res.ok) throw new Error(String(res.status));
+      pyCode.textContent = await res.text();
+      pyLoaded = name;
+    } catch {
+      pyCode.textContent = `Could not load ${name}. Use the download buttons above.`;
+    }
+  };
+  document.querySelectorAll("[data-py]").forEach((b) => {
+    b.addEventListener("click", () => {
+      document.querySelectorAll("[data-py]").forEach((x) => {
+        x.classList.toggle("active", x === b);
+        x.setAttribute("aria-selected", String(x === b));
+      });
+      showPy(b.dataset.py);
+    });
+  });
+  pyPanel?.addEventListener("toggle", () => {
+    if (pyPanel.open && !pyLoaded) showPy("engine.py");
+  });
+
   $("#undoBtn")?.addEventListener("click", () => { undo(); });
   paintUndo();
 
