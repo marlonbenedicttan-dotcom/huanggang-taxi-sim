@@ -58,11 +58,25 @@ def test_no_abandonment_when_infinitely_patient():
     assert m["party_abandoned"] == 0
 
 
-def test_smart_beats_baseline():
-    """The policy package must reduce mean wait on identical seeds."""
-    b = [_m(SCENARIOS["baseline"], s)["wait_mean"] for s in (11, 12, 13)]
-    s_ = [_m(SCENARIOS["smart_full"], s)["wait_mean"] for s in (11, 12, 13)]
-    assert sum(s_) / 3 < sum(b) / 3 * 0.8, (b, s_)
+def test_recommendation_halves_the_wait():
+    """Ticket + return booking, on identical seeds, must halve the wait."""
+    rec = replace(BASE, ticket_delay_min=1.5, backhaul_match=0.8)
+    b = [_m(BASE, s)["wait_mean_incl_abandon"] for s in (11, 12, 13)]
+    r = [_m(rec, s)["wait_mean_incl_abandon"] for s in (11, 12, 13)]
+    assert sum(r) / 3 < sum(b) / 3 * 0.5, (b, r)
+
+
+def test_capacity_does_nothing_until_supply_is_fixed():
+    """With the paper ticket in place the hall is supply-starved, so the
+    operational package (dispatch, pooling, app, routing) measures ~0. Once
+    the ticket is digital the same package is worth a third of the wait."""
+    paper_base = _m(BASE, 11)["wait_mean"]
+    paper_ops = _m(SCENARIOS["all_operational"], 11)["wait_mean"]
+    assert paper_ops > paper_base * 0.9, (paper_base, paper_ops)
+
+    digital_base = _m(replace(BASE, ticket_delay_min=1.5), 11)["wait_mean"]
+    digital_ops = _m(replace(SCENARIOS["all_operational"], ticket_delay_min=1.5), 11)["wait_mean"]
+    assert digital_ops < digital_base * 0.8, (digital_base, digital_ops)
 
 
 def test_more_demand_more_wait():

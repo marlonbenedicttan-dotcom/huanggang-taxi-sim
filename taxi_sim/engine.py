@@ -360,10 +360,14 @@ class Simulation:
         while t < end:
             hour = self._hour(t)
             rate = rate_fn(hour)
+            # boundary of the current clock hour, in simulation minutes
+            seg_end = (math.floor(self.cfg.start_hour + t / 60.0) + 1
+                       - self.cfg.start_hour) * 60.0
+            if seg_end <= t:
+                seg_end = t + 60.0
             if rate <= 0:
-                t = (int(t // 60) + 1) * 60.0
+                t = seg_end
                 continue
-            seg_end = (int(t // 60) + 1) * 60.0
             dt = self.rng.expovariate(rate / 60.0)  # minutes
             if t + dt >= seg_end:
                 t = seg_end
@@ -501,13 +505,14 @@ class Simulation:
         pax.status = "boarded"
         pax.t_serve = self.t
         tx.t_serve = self.t
+        tx.status = "serving"   # no longer waiting: patience must not fire
         self.busy[cls] += 1
         # ---- statistics: only passengers/taxis of the measured cohort ----
         if pax.t_arr >= self.cfg.warm_min:
             self.waits.append(self.t - pax.t_arr)
             self.waits_by_class[cls].append(self.t - pax.t_arr)
             self.pax_served += 1
-        if tx.t_enter >= self.cfg.warm_min:
+        if tx.t_first >= self.cfg.warm_min:
             self.taxi_buffer_waits.append(self.t - tx.t_enter)
         dur = self._service_time(cls, pax)
         heapq.heappush(
@@ -535,7 +540,8 @@ class Simulation:
             self.flex_buf.append(tx)
         else:
             self.buf[cls].append(tx)
-        self.taxi_arrived += 1
+        if t_first >= self.cfg.warm_min:
+            self.taxi_arrived += 1
         # driver gives up if not called forward in time
         if cfg.taxi_patience_mean_min < float("inf"):
             patience = _lognormal(
@@ -599,6 +605,7 @@ class Simulation:
                     # sent down the wrong lane, staff redirect -> extra empty
                     # driving before the taxi can queue again
                     self.misroutes += 1
+                    self.recircs += 1
                     self._schedule_recirc(cls, t_first, flex)
                     continue
                 self._enter_buffer(cls, t_first, flex)
@@ -608,7 +615,6 @@ class Simulation:
 
             elif kind == "RECIRC":
                 cls, t_first, flex = payload
-                self.recircs += 1
                 self._enter_buffer(cls, t_first, flex)
                 if cfg.dispatch_interval_min <= 0:
                     self._release_continuous()
@@ -622,8 +628,9 @@ class Simulation:
             elif kind == "SERVICE":
                 tx, cls = payload
                 self.busy[cls] -= 1
-                self.taxi_served += 1
-                self.taxi_dwells.append(self.t - tx.t_first)
+                if tx.t_first >= warm:
+                    self.taxi_served += 1
+                    self.taxi_dwells.append(self.t - tx.t_first)
                 if tx.status != "left":
                     tx.status = "done"
                 if cfg.dispatch_interval_min <= 0:
@@ -644,14 +651,20 @@ class Simulation:
 
             elif kind == "GIVEUP":
                 tx = payload
-                if tx.status == "buffer":
+                # patience applies wherever the taxi is waiting: in the buffer
+                # or already queued behind the stands
+                if tx.status in ("buffer", "stand"):
                     tx.status = "left"
                     lane = self.flex_buf if tx.flex else self.buf[tx.cls]
                     try:
                         lane.remove(tx)
                     except ValueError:
                         pass
-                    if t >= warm:
+                    try:
+                        self.stand[tx.cls].remove(tx)
+                    except ValueError:
+                        pass
+                    if tx.t_first >= warm:
                         self.taxi_left_empty += 1
 
             elif kind == "SAMPLE":
@@ -670,7 +683,9 @@ class Simulation:
         # taxis queued behind the stands are waiting too; counting only the
         # buffer made the KPI say "1 waiting" while the animation showed 20
         self.s_wait.append(
-            self._buffer_len() + sum(len(self.stand[c]) for c in CLASSES)
+            self._buffer_len()
+            + len(self.buf["prebook"])
+            + sum(len(self.stand[c]) for c in CLASSES)
         )
 
     def _result(self) -> Result:
@@ -702,7 +717,7 @@ class Simulation:
             "party_arrived": self.pax_arrived,
             "party_served": self.pax_served,
             "party_abandoned": self.pax_abandoned,
-            "abandon_rate_pct": 100.0 * self.pax_abandoned / max(measured, 1),
+            "abandon_rate_pct": 100.0 * self.pax_abandoned / max(self.pax_arrived, 1),
             "wait_mean": mean_wait,
             "wait_mean_incl_abandon": _mean(all_waits),
             "wait_median": _pct(sorted(waits), 0.5),

@@ -359,13 +359,13 @@ repositioning fix: the same car, already at the port, leaves loaded.
 
 | | Mean wait | Gave up |
 |---|---|---|
-| today | 19.1 min | 18.4% |
-| digital ticket only | 8.8 min | 4.7% |
-| return booking only | 5.9 min | 1.2% |
-| **both** | **3.6 min** | **0.1%** |
+| today | 19.1 min | 18.1% |
+| digital ticket only | 9.0 min | 4.8% |
+| return booking only | 6.1 min | 1.2% |
+| **both** | **4.0 min** | **0.1%** |
 
-Thirty replications of `BASE`, seeds 1–30. The browser engine gives 19.6, 9.4,
-6.3 and 4.2 for the same rows, inside the confidence intervals reported by
+Thirty replications of `BASE`, seeds 1–30. The browser engine gives 19.7, 9.7,
+6.6 and 4.2 for the same rows, inside the confidence intervals reported by
 `tests/parity_check.py`. The booking's effect is a modelling assumption (the
 supply response is illustrative), so treat the size as an upper bound and the
 direction as the finding.

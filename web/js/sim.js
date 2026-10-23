@@ -337,11 +337,12 @@ export class Simulation {
     const end = this.end;
     while (t < end) {
       const rate = rateFn(this.hour(t));
+      let segEnd = (Math.floor(this.cfg.startHour + t / 60) + 1 - this.cfg.startHour) * 60;
+      if (segEnd <= t) segEnd = t + 60;
       if (rate <= 0) {
-        t = (Math.floor(t / 60) + 1) * 60;
+        t = segEnd;
         continue;
       }
-      const segEnd = (Math.floor(t / 60) + 1) * 60;
       const dt = expo(rng, rate / 60);
       if (t + dt >= segEnd) {
         t = segEnd;
@@ -488,7 +489,7 @@ export class Simulation {
       this.waitsByClass[cls].push(w);
       this.paxServed++;
     }
-    if (tx.tEnter >= this.warm) this.taxiBufferWaits.push(this.t - tx.tEnter);
+    if (tx.tFirst >= this.warm) this.taxiBufferWaits.push(this.t - tx.tEnter);
 
     const dur = this.serviceTime(cls, pax);
     this.push(this.t + dur, EV.SERVICE, tx, cls, 0);
@@ -526,7 +527,7 @@ export class Simulation {
     };
     if (flex) this.flexBuf.push(tx);
     else this.buf[cls].push(tx);
-    this.taxiArrived++;
+    if (tFirst >= this.warm) this.taxiArrived++;
 
     if (cfg.taxiPatienceMeanMin < Infinity) {
       const pat = lognormal(this.rng, cfg.taxiPatienceMeanMin, cfg.taxiPatienceCv);
@@ -575,6 +576,7 @@ export class Simulation {
             cfg.misrouteProb > 0 && this.rng() < cfg.misrouteProb
           ) {
             this.misroutes++;
+            this.recirc++;
             this.scheduleRecirc(cls, tFirst, false);
             break;
           }
@@ -584,7 +586,6 @@ export class Simulation {
           break;
         }
         case EV.RECIRC: {
-          this.recirc++;
           this.enterBuffer(a, b, c === 1);
           if (cfg.dispatchIntervalMin <= 0) this.releaseContinuous();
           this.serve();
@@ -599,8 +600,10 @@ export class Simulation {
           const tx = a;
           const cls = b;
           this.busy[cls]--;
-          this.taxiServed++;
-          this.taxiDwells.push(t - tx.tFirst);
+          if (tx.tFirst >= this.warm) {
+            this.taxiServed++;
+            this.taxiDwells.push(t - tx.tFirst);
+          }
           if (tx.bay >= 0 && this.bayOwner[tx.bayGroup]) {
             this.bayOwner[tx.bayGroup][tx.bay] = null;
           }
@@ -625,12 +628,15 @@ export class Simulation {
         }
         case EV.GIVEUP: {
           const tx = a;
-          if (tx.state === 0) {
+          if (tx.state === 0 || tx.state === 1) {
             tx.state = 5;
             const lane = tx.flex ? this.flexBuf : this.buf[tx.cls];
-            const i = lane.indexOf(tx);
+            let i = lane.indexOf(tx);
             if (i >= 0) lane.splice(i, 1);
-            if (t >= this.warm) this.taxiLeftEmpty++;
+            const sq = this.stand[tx.cls];
+            i = sq.indexOf(tx);
+            if (i >= 0) sq.splice(i, 1);
+            if (tx.tFirst >= this.warm) this.taxiLeftEmpty++;
           }
           break;
         }
@@ -643,8 +649,8 @@ export class Simulation {
             this.busySum += busy;
             const bl = this.bufferVisualLen();
             this.bufSum += bl;
-            this.waitSum += bl + this.stand.urban.length + this.stand.nt.length +
-              this.stand.prebook.length;
+            this.waitSum += bl + this.buf.prebook.length + this.stand.urban.length +
+              this.stand.nt.length + this.stand.prebook.length;
             this.bufSumUrban += this.buf.urban.length;
             if (this.buf.urban.length >= this.cfg.bufferCapacity) this.urbanFullSamples++;
             this.bufSumNt += this.buf.nt.length;
@@ -734,7 +740,7 @@ export class Simulation {
       partyArrived: this.paxArrived,
       partyServed: this.paxServed,
       partyAbandoned: this.paxAbandoned,
-      abandonRatePct: (100 * this.paxAbandoned) / Math.max(measured, 1),
+      abandonRatePct: (100 * this.paxAbandoned) / Math.max(this.paxArrived, 1),
       waitMean: mean(this.waits),
       // Mean wait over *everyone* who arrived, including those who gave up.
       // waitMean only covers passengers who were served, so a policy that
