@@ -1213,12 +1213,19 @@ async function computeEffects() {
         batchWait(buildConfig({ ...state.values, ...card.off }), seeds),
       ]);
       if (token !== effectsToken) return;
-      const on = stats(onVals);
-      const off = stats(offVals);
-      if (on && off) {
-        card.effect = on.m - off.m;
-        card.effectSE = Math.hypot(on.se, off.se);
-        card.effectN = seeds.length;
+      // common random numbers: compare seed by seed, so the day-to-day
+      // variation cancels instead of being counted as noise
+      const diffs = onVals
+        .map((v, i) => v - offVals[i])
+        .filter((v) => Number.isFinite(v));
+      if (diffs.length >= 2) {
+        const dm = diffs.reduce((a, v) => a + v, 0) / diffs.length;
+        const dsd = Math.sqrt(
+          diffs.reduce((a, v) => a + (v - dm) ** 2, 0) / (diffs.length - 1)
+        );
+        card.effect = dm;
+        card.effectSE = dsd / Math.sqrt(diffs.length);
+        card.effectN = diffs.length;
       }
       paintCards();
       renderPilot();

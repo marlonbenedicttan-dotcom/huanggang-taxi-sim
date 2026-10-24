@@ -54,6 +54,7 @@ export const DEFAULTS = {
   warmupHours: 1,
 
   paxPerHour: 550,
+  demandVariationCv: 0.06,
   partySize: 1.3,
   prebookShare: 0.1,
   urbanShare: 0.75,
@@ -190,6 +191,10 @@ export class Simulation {
     cfg.serviceMeanMin = { ...DEFAULTS.serviceMeanMin, ...(config.serviceMeanMin || {}) };
     this.cfg = cfg;
     this.rng = makeRng(seed);
+    // a seed is a day: demand varies a little, supply does not know the day
+    this.dayFactor = (cfg.demandVariationCv ?? 0.06) > 0
+      ? lognormal(this.rng, 1, cfg.demandVariationCv ?? 0.06)
+      : 1;
     this.seed = seed;
     this.t = 0;
     this.seq = 0;
@@ -332,7 +337,7 @@ export class Simulation {
 
   paxRate(cls, hour) {
     const mult = cls === "nt" ? this.ntMult[hour] : this.demandMult[hour];
-    return this.basePartyRate[cls] * mult;
+    return this.basePartyRate[cls] * mult * this.dayFactor;
   }
 
   taxiRate(cls, hour) {

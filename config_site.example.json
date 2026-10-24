@@ -71,5 +71,6 @@
     0.3,
     0.3
   ],
-  "prebook_dispatch_min": 0.75
+  "prebook_dispatch_min": 0.75,
+  "demand_variation_cv": 0.06
 }

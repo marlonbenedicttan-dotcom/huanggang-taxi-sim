@@ -62,6 +62,7 @@ class Config:
 
     # ---- passenger demand ---------------------------------------------
     pax_per_hour: float = 450.0      # average passengers per hour (whole port)
+    demand_variation_cv: float = 0.06  # day-to-day spread; 0 = every seed is the same day
     party_size: float = 1.3          # passengers per taxi trip
     prebook_share: float = 0.10      # share using fleet / pre-booked channel
     urban_share: float = 0.75        # urban vs NT split of the walk-up demand
@@ -253,6 +254,12 @@ class Simulation:
     def __init__(self, cfg: Config, seed: int = 0):
         self.cfg = cfg
         self.rng = random.Random(seed)
+        # a seed is a day, not just a stream of coin flips: demand varies a
+        # little from day to day, while supply does not know the day in advance
+        self.day_factor = (
+            _lognormal(self.rng, 1.0, cfg.demand_variation_cv)
+            if cfg.demand_variation_cv > 0 else 1.0
+        )
         self.t = 0.0
         self.seq = 0
         self.events = []
@@ -362,7 +369,7 @@ class Simulation:
     def _pax_rate(self, cls, hour):
         """Passengers of ``cls`` per hour at a given hour of day."""
         mult = self.nt_mult[hour] if cls == "nt" else self.demand_mult[hour]
-        return self.base_party_rate[cls] * mult
+        return self.base_party_rate[cls] * mult * self.day_factor
 
     def _taxi_rate(self, cls, hour):
         """Empty taxis of ``cls`` per hour at a given hour of day."""
@@ -786,6 +793,7 @@ class Simulation:
 
         m = {
             "window_h": window_h,
+            "day_factor": self.day_factor,
             # ---- passenger side -------------------------------------
             "party_arrived": self.pax_arrived,
             "party_served": self.pax_served,

@@ -38,7 +38,7 @@ NODE = os.path.expanduser("~/.local/node/bin/node")
 
 # The two engines draw demand from independent RNG streams, so a raw count of
 # arrivals is compared with a tolerance rather than a confidence interval.
-TOLERANCE = {"party_arrived": 2.0}
+TOLERANCE = {"party_arrived": 4.0}
 
 PAIRS = [
     ("wait_mean", "waitMean"),

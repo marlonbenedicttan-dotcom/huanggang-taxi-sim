@@ -44,7 +44,7 @@ def test_utilisation_bounds():
 
 def test_arrival_rate_close_to_config():
     """Realised arrivals should match pax_per_hour within sampling error."""
-    m = _m(replace(BASE, patience_mean_min=float("inf")), seed=7)
+    m = _m(replace(BASE, patience_mean_min=float("inf"), demand_variation_cv=0.0), seed=7)
     expected = (
         BASE.pax_per_hour
         / BASE.party_size

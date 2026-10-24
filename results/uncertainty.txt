@@ -1,13 +1,13 @@
-default: today 18.67 | ticket 11.78 | booking 10.22 | both 5.97
+default: today 18.21 | ticket 11.40 | booking 9.75 | both 5.92
 
 assumption                                   low    high          range
 --------------------------------------------------------------------------
-loaded share of taxi visits                 6.68    4.94   4.94-6.68   package still best
-drop-offs that take a fare back today       4.84    7.00   4.84-7.00   package still best
-drivers who skip a busy rank                5.72    5.77   5.72-5.77   package still best
-passenger patience (min)                    4.87    6.72   4.87-6.72   package still best
-taxi patience (min)                         6.01    5.90   5.90-6.01   package still best
-boarding time (min)                         2.92   12.79   2.92-12.79   package still best
-demand (pax/h)                              0.79   13.67   0.79-13.67   package still best
+loaded share of taxi visits                 6.79    4.88   4.88-6.79   package still best
+drop-offs that take a fare back today       5.20    6.95   5.20-6.95   package still best
+drivers who skip a busy rank                5.96    5.95   5.95-5.96   package still best
+passenger patience (min)                    4.78    6.77   4.78-6.77   package still best
+taxi patience (min)                         5.98    5.83   5.83-5.98   package still best
+boarding time (min)                         3.03   12.71   3.03-12.71   package still best
+demand (pax/h)                              0.99   13.58   0.99-13.58   package still best
 --------------------------------------------------------------------------
-recommended wait across every swing: 0.79 - 13.67 min
+recommended wait across every swing: 0.99 - 13.58 min
