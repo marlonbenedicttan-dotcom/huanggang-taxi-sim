@@ -246,6 +246,20 @@ is divided by the passenger-minutes saved. Comparing a 24-hour cost with a
 `demand_profile` (24 hourly multipliers) and `nt_shift_hours` shape the peaks;
 `supply_flatness` controls how badly taxi supply follows demand.
 
+### Does the night matter?
+
+The port runs 24 hours; the study window is 08:00–20:00. Re-running the whole day
+at the same daytime level (354 pax/h over 24 hours, which gives the same
+08:00–20:00 demand as 550/h over the shift) gives **11.7 min mean and 10.7%
+abandoning**, because the quiet night pulls the average down. A guaranteed
+overnight minimum of 2, 4 or 8 taxis per hour changes **nothing**: at 02:00 the
+thinned supply already exceeds demand.
+
+So the 12-hour window is the right lens for the peak problem, and the night
+needs no taxi policy. Note that the demand input is an average over the
+*selected window* — the 24-hour option at 550/h is a much busier day, not the
+same day spread over more hours.
+
 ### The default setup — and how much the answer depends on it
 
 With no field data yet, the defaults describe a *congested but plausible* port:

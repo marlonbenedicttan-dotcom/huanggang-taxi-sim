@@ -20,7 +20,7 @@ const GROUPS = [
     name: "The essentials",
     items: [
       { key: "paxPerHour", label: "Passengers arriving", min: 300, max: 850, step: 10, unit: "pax/h",
-        hint: "Walk-up passengers per hour, averaged over the shift. Count arrivals at the taxi hall for 2-3 days." },
+        hint: "Walk-up passengers per hour, averaged over the selected time window. A wider window at the same rate means a busier day, not the same day spread thinner." },
       { key: "taxiSupplyRatioUrban", label: "Urban (red) taxis arriving", min: 0.7, max: 1.4, step: 0.05, unit: "× demand",
         hint: "Empty urban taxis entering the buffer, relative to passenger demand. 1.0 means supply matches demand on average." },
       { key: "taxiSupplyRatioNt", label: "NT (green) taxis arriving", min: 0.7, max: 1.4, step: 0.05, unit: "× demand",
