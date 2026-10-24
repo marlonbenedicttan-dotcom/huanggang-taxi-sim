@@ -59,8 +59,8 @@ const GROUPS = [
   {
     name: "Driver incentives",
     items: [
-      { key: "returnPickup", label: "Drop-offs that take a fare back", min: 0.2, max: 1, step: 0.05, pct: true,
-        hint: "Share of taxis that drop a passenger at the port and take someone back into Hong Kong instead of driving home empty. Today about 4 in 10 do; booking raises it." },
+      { key: "returnPickup", label: "Drop-offs that rejoin the queue", min: 0.2, max: 1, step: 0.05, pct: true,
+        hint: "Share of taxis that drop a passenger and rejoin the pick-up queue instead of driving home empty. Today about 4 in 10 do; priority at the drop-off lifts it." },
       { key: "portSurchargeHkd", label: "Extra charge on trips from the port", min: 0, max: 50, step: 5, unit: "HKD",
         hint: "A regulated surcharge added to fares leaving the port. Raises what the trip is worth, so more drivers come. The cost lands on the passenger." },
       { key: "waitAllowanceHkd", label: "Paid for each minute waiting", min: 0, max: 4, step: 0.5, unit: "HKD/min",
@@ -988,7 +988,7 @@ const CARDS = [
       "away are the ones that would have arrived just before a queue formed.",
   },
   {
-    label: "Book the trip back",
+    label: "Priority for drop-off taxis",
     icon: "route",
     cost: { capital: 1.2e6, years: 5, annual: 1.5e5, kind: "software" },
     pilot: { metric: "share of port drop-offs with a return booking", weeks: 6 },
@@ -996,13 +996,12 @@ const CARDS = [
     off: { returnPickup: 0.4 },
     isOn: (v) => Number(v.returnPickup) > 0.55,
     note:
-      "A passenger arriving from Shenzhen can book a Hong Kong taxi before clearing " +
-      "immigration. The booking goes to a taxi that has just dropped someone off, so " +
-      "the driver knows the return leg is paid before deciding to come. Booked trips " +
-      "use the pre-booked stand, so the walk-up queue is not pushed back. No new cars, " +
-      "no new licence, and no agreement with Shenzhen — a repositioning fix worth " +
-      "about as much as the ticket. The model assumes 8 in 10 drop-offs can be " +
-      "matched this way.",
+      "A driver who has just dropped a passenger must still drive to the buffer for a " +
+      "queue number before picking anyone up, which is why most of them leave empty. " +
+      "Issue that number at the drop-off, or fast-track it, and the same car rejoins " +
+      "the stand without the loop. No new taxis and no new licences — a repositioning " +
+      "fix worth about as much as the ticket. The model assumes 8 in 10 drop-offs " +
+      "rejoin this way.",
   },
   {
     label: "Two more boarding stands",

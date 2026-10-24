@@ -309,7 +309,7 @@ into town. Three supply-side instruments are modelled:
 
 | Policy | Parameter | What the model assumes it does |
 |---|---|---|
-| Return-trip booking | `return_pickup` 0–1 | share of drop-offs that take a passenger back into Hong Kong instead of deadheading; today about 40%, the booking policy lifts it |
+| Drop-off priority | `return_pickup` 0–1 | share of drop-offs that rejoin the pick-up queue instead of deadheading; today about 40%, priority lifts it |
 | Port pickup surcharge | `port_surcharge_hkd` 0–50 | a regulated extra fare on trips leaving the port |
 | Waiting-time allowance | `wait_allowance_hkd` 0–4 | paid per minute spent queueing at the port |
 
@@ -408,7 +408,39 @@ turn-away share from 0.5 to 0.9 moves the recommended package's wait only
 between **5.2 and 5.5 minutes** — the recommendation does not depend on where
 this behaviour sits, which is the useful result.
 
-### The return leg: a booking, not a border quota
+### The official arrangements (as built)
+
+Huanggang Port reopened on 12 October 2026. The model takes the following
+arrangements as given, because they are the rules the policies have to fit:
+
+- every vacant urban or NT taxi — and every pre-booked fleet taxi — must obtain
+  a **queue number at the public transport buffer area** before going to its
+  stand or the fleet pick-up area (TD press release, 7 Oct 2026);
+- the taxi trade measures the round trip at **about 8 minutes** and has asked TD
+  to review it (The Standard, 12 Oct 2026);
+- a **dedicated pre-booked fleet pick-up area, passenger lounge and service
+  counter** already exist, with ambassadors deploying fleet taxis from the
+  buffer (TD, 7 Oct 2026; RTHK, 8 Oct 2026);
+- **no pick-up point is provided for pre-booked non-fleet taxis** at the PTI
+  (TD, *Access to Huanggang Port*), so ordinary red or green taxis cannot be
+  booked to the kerb;
+- there is **no public carpark** and the PTI layout is fixed;
+- there is **no ride-hailing** inside the boundary area; only authorised
+  services, including licensed fleets (SCMP, 7 Oct 2026).
+
+That is why the two policies are the ones they are. A "return-trip booking" for
+walk-up taxis is **not available under the current rules** — it exists only
+through the licensed fleets (10% of demand). Digitalising the queue number and
+issuing it at the drop-off are both inside TD's control.
+
+Sources: [TD press release, 7 Oct 2026](https://www.info.gov.hk/gia/general/202610/07/P2026100700239.htm) ·
+[TD, Access to Huanggang Port](https://www.td.gov.hk/en/transport_in_hong_kong/land_based_cross_boundary_transport/athp/index.html) ·
+[The Standard, 12 Oct 2026](https://www.thestandard.com.hk/news/article/345240/Taxi-industry-urges-review-of-queue-ticket-requirement-at-new-Huanggang-Port) ·
+[RTHK, 8 Oct 2026](https://news.rthk.hk/rthk/en/component/k2/1873133-20261008.htm) ·
+[SCMP, 7 Oct 2026](https://www.scmp.com/news/hong-kong/transport/article/3370014/travellers-must-use-authorised-buses-taxis-huanggang-port-hong-kong-authorities-say) ·
+[LegCo reply, 14 Oct 2026](https://www.tlb.gov.hk/eng/legislative/transport/replies/2026/20261014f.html)
+
+### The return leg: priority, not a booking
 
 The taxi never crosses the boundary. It drops a passenger at Huanggang and needs
 someone going back into Hong Kong. A cross-border quota would let Hong Kong
@@ -417,27 +449,27 @@ requiring a bilateral agreement. It would not fill the empty Hong Kong-bound
 leg, and the model never simulated it: the old card was a +50% supply
 multiplier with a border story attached.
 
-What the model does simulate is the share of drop-offs that leave with a booked
-trip back. A passenger arriving from Shenzhen books a Hong Kong taxi before
-clearing immigration; the booking goes to a taxi that has just dropped off, and
-it uses its own stand, so the walk-up queue is untouched. That is a
-repositioning fix: the same car, already at the port, leaves loaded.
+What the model does simulate is the share of drop-offs that rejoin the
+pick-up queue. Under the rules as built, a driver who has just dropped a
+passenger must still drive to the buffer for a queue number before picking
+anyone up. Issuing that number at the drop-off — or fast-tracking it — lets the
+same car rejoin the stand without the loop. That is a repositioning fix: no new
+taxis, no new licences, and it works inside the official layout.
 
 | | Mean wait | Gave up |
 |---|---|---|
 | today | 18.0 min | 18.0% |
 | digital ticket only | 11.7 min | 4.5% |
-| return booking only | 9.9 min | 3.5% |
+| drop-off priority only | 9.9 min | 3.5% |
 | **both** | **5.9 min** | **0.7%** |
 
 The same runs show the mechanism: drop-offs that go back empty fall from **60%**
-to **20%** once the booking policy is on.
+to **20%** once the priority policy is on.
 
 Thirty replications of `BASE`, seeds 1–30. The browser engine gives 19.3, 12.4,
 11.4 and 7.0 for the same rows, inside the confidence intervals reported by
-`tests/parity_check.py`. The booking's effect is a modelling assumption (the
-supply response is illustrative), so treat the size as an upper bound and the
-direction as the finding.
+`tests/parity_check.py`. The size of that response is a modelling assumption, so treat it as an upper
+bound and the direction as the finding.
 
 ### Sensitivity: which assumptions matter
 
@@ -467,7 +499,7 @@ constraint, which is exactly why the operational package measures zero.
 | Digital queue ticket | yes — the live issue, and what the trade asked for |
 | App / fleet pre-registration | yes — fleet taxis are already bookable |
 | Two extra stands | capital works; the PTI layout is fixed as built |
-| Return-trip booking | yes — booked trips use their own stand, so the walk-up queue is untouched |
+| Drop-off priority | yes — the queue number can be issued at the drop-off, inside the official layout |
 | Port pickup surcharge | no — HK fares are uniform by meter, no location surcharge |
 | Flexible taxis | no — green taxis stay licensed for NT destinations |
 | Pooled pickup bays | no — red and green have separate stands by licence |
@@ -521,7 +553,7 @@ inside an interval are not claims. `results/summary_table.md` is regenerated by
    72.5% to 43.7% and the buffer drains, but passengers wait 5% less. It is
    optimising a constraint that is not binding — a useful negative result.
 4. **The two levers that do work are supply-side**: the digital ticket and the
-   return-trip booking, together 18.0 → 5.9 minutes (Section 4b). Neither needs
+   priority for drop-off taxis, together 18.0 → 5.9 minutes (Section 4b). Neither needs
    a new bay.
 5. **Capacity matters much more after supply is restored.** With the paper
    ticket, app check-in and two extra stands buy about **0.3 minutes**; with the
